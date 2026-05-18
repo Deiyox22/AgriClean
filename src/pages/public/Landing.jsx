@@ -1,9 +1,11 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useMemo, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { CheckCircle, ArrowRight, Mail, Phone, MapPin, Send, Download, Users, Building2 } from 'lucide-react'
+import { CheckCircle, ArrowRight, Mail, Phone, MapPin, Send, Download, Users, Building2, Calculator, FileSearch, ArrowUpRight } from 'lucide-react'
 import PublicLayout from '../../components/layout/PublicLayout'
 import { db } from '../../db/db'
 import { usePWAInstall } from '../../hooks/usePWAInstall'
+import { useSettingsStore } from '../../store/useSettingsStore'
+import { formatCurrency } from '../../utils/formatters'
 
 const services = [
   {
@@ -35,8 +37,52 @@ const services = [
   },
 ]
 
-function ContactForm() {
-  const [form, setForm] = useState({ name: '', email: '', phone: '', message: '' })
+function QuoteCards({ onSelect }) {
+  const quoteServices = [
+    { id: 'ramassage', title: "Ramassage d'œufs", icon: '🥚', desc: "Estimation basée sur le nombre de bâtiments." },
+    { id: 'nettoyage_agricole', title: "Nettoyage Agricole", icon: '🌿', desc: "Estimation au m² pour bâtiments d'élevage." },
+    { id: 'nettoyage_industriel', title: "Nettoyage Industriel", icon: '🏭', desc: "Protocoles HACCP et désinfection poussée." },
+  ]
+
+  return (
+    <div className="grid gap-4">
+      {quoteServices.map((s) => (
+        <button
+          key={s.id}
+          onClick={() => onSelect(s)}
+          className="group flex items-center gap-4 p-5 bg-white rounded-3xl border border-slate-100 shadow-sm hover:shadow-xl hover:border-primary/20 transition-all text-left w-full"
+        >
+          <div className="w-14 h-14 rounded-2xl bg-slate-50 flex items-center justify-center text-3xl group-hover:scale-110 transition-transform">
+            {s.icon}
+          </div>
+          <div className="flex-1">
+            <h4 className="font-bold text-slate-900 mb-0.5">{s.title}</h4>
+            <p className="text-xs text-slate-500 leading-relaxed">{s.desc}</p>
+          </div>
+          <div className="w-10 h-10 rounded-full bg-primary/5 flex items-center justify-center text-primary opacity-0 group-hover:opacity-100 transition-opacity">
+            <ArrowRight size={18} />
+          </div>
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function ContactForm({ simulationData }) {
+  const [form, setForm] = useState({
+    name: '', company: '', email: '', phone: '', city: '',
+    serviceType: simulationData?.id || 'ramassage',
+    details: '', // Bâtiments ou Surface
+    frequency: 'unique',
+    message: ''
+  })
+
+  useEffect(() => {
+    if (simulationData) {
+      setForm(f => ({ ...f, serviceType: simulationData.id }))
+    }
+  }, [simulationData])
+
   const [sent, setSent] = useState(false)
   const [sending, setSending] = useState(false)
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
@@ -45,9 +91,29 @@ function ContactForm() {
     e.preventDefault()
     setSending(true)
     try {
+      const serviceLabel = services.find(s => s.id === form.serviceType)?.title || form.serviceType
+      const detailLabel = form.serviceType === 'ramassage' ? 'Nombre de bâtiments' : 'Surface (m²)'
+
+      const subject = encodeURIComponent(`Demande de devis — ${form.company || form.name}`)
+      const body = encodeURIComponent(
+        `DEMANDE DE DEVIS STRUCTUREE\n` +
+        `----------------------------------------\n` +
+        `Prestation : ${serviceLabel}\n` +
+        `Fréquence : ${form.frequency}\n` +
+        `${detailLabel} : ${form.details}\n\n` +
+        `COORDONNÉES CLIENT\n` +
+        `----------------------------------------\n` +
+        `Nom : ${form.name}\n` +
+        `Société : ${form.company || 'N/A'}\n` +
+        `Ville/CP : ${form.city}\n` +
+        `Email : ${form.email}\n` +
+        `Téléphone : ${form.phone}\n\n` +
+        `MESSAGE COMPLÉMENTAIRE\n` +
+        `----------------------------------------\n` +
+        `${form.message || 'Aucun message.'}`
+      )
+
       await db.contacts.add({ ...form, createdAt: new Date().toISOString() })
-      const subject = encodeURIComponent(`Contact site — ${form.name}`)
-      const body = encodeURIComponent(`Nom : ${form.name}\nEmail : ${form.email}\nTéléphone : ${form.phone}\n\nMessage :\n${form.message}`)
       window.location.href = `mailto:contact@agriclean.fr?subject=${subject}&body=${body}`
       setSent(true)
     } finally {
@@ -55,41 +121,88 @@ function ContactForm() {
     }
   }
 
-  const inputCls = 'w-full px-4 py-3 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary bg-white transition-colors'
+  const inputCls = 'w-full px-4 py-3 rounded-xl border border-slate-200 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary bg-white transition-colors placeholder:text-slate-400'
+  const labelCls = 'block text-xs font-semibold text-slate-700 mb-1.5'
 
   if (sent) return (
-    <div className="flex flex-col items-center justify-center py-12 text-center">
-      <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4">
-        <CheckCircle size={32} className="text-green-600" />
+    <div className="flex flex-col items-center justify-center py-12 text-center text-slate-900">
+      <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mb-6">
+        <CheckCircle size={40} className="text-green-600" />
       </div>
-      <p className="text-xl font-bold text-slate-900">Message envoyé !</p>
-      <p className="text-slate-500 mt-2">Nous vous répondrons dans les plus brefs délais.</p>
+      <p className="text-2xl font-black">Demande transmise !</p>
+      <p className="text-slate-500 mt-3 max-w-xs mx-auto">Votre récapitulatif est prêt dans votre logiciel de messagerie.</p>
+      <button onClick={() => setSent(false)} className="mt-8 text-sm font-bold text-primary underline underline-offset-4">Nouvelle demande</button>
     </div>
   )
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit} className="space-y-5">
+      <div className="bg-slate-100 p-1 rounded-2xl flex gap-1 mb-2">
+        {[
+          { id: 'ramassage', label: 'Ramassage' },
+          { id: 'nettoyage_agricole', label: 'Nettoyage' }
+        ].map(t => (
+          <button key={t.id} type="button" onClick={() => set('serviceType', t.id)}
+            className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all ${form.serviceType.includes(t.id) ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
       <div className="grid sm:grid-cols-2 gap-4">
         <div>
-          <label className="block text-xs font-medium text-slate-600 mb-1.5">Nom complet *</label>
+          <label className={labelCls}>Nom complet *</label>
           <input required className={inputCls} value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="Jean Martin" />
         </div>
         <div>
-          <label className="block text-xs font-medium text-slate-600 mb-1.5">Email *</label>
-          <input required type="email" className={inputCls} value={form.email} onChange={(e) => set('email', e.target.value)} placeholder="jean@entreprise.fr" />
+          <label className={labelCls}>Société (Optionnel)</label>
+          <input className={inputCls} value={form.company} onChange={(e) => set('company', e.target.value)} placeholder="EARL du Midi" />
         </div>
       </div>
-      <div>
-        <label className="block text-xs font-medium text-slate-600 mb-1.5">Téléphone</label>
-        <input type="tel" className={inputCls} value={form.phone} onChange={(e) => set('phone', e.target.value)} placeholder="06 00 00 00 00" />
+
+      <div className="grid sm:grid-cols-2 gap-4">
+        <div>
+          <label className={labelCls}>Email *</label>
+          <input required type="email" className={inputCls} value={form.email} onChange={(e) => set('email', e.target.value)} placeholder="jean@entreprise.fr" />
+        </div>
+        <div>
+          <label className={labelCls}>Téléphone *</label>
+          <input required type="tel" className={inputCls} value={form.phone} onChange={(e) => set('phone', e.target.value)} placeholder="06 00 00 00 00" />
+        </div>
       </div>
-      <div>
-        <label className="block text-xs font-medium text-slate-600 mb-1.5">Message *</label>
-        <textarea required rows={4} className={inputCls} value={form.message} onChange={(e) => set('message', e.target.value)} placeholder="Décrivez votre besoin (type de nettoyage, fréquence, localisation…)" />
+
+      <div className="grid sm:grid-cols-2 gap-4 border-t border-slate-100 pt-4">
+        <div>
+          <label className={labelCls}>Ville & Code Postal *</label>
+          <input required className={inputCls} value={form.city} onChange={(e) => set('city', e.target.value)} placeholder="30000 Nîmes" />
+        </div>
+        <div>
+          <label className={labelCls}>
+            {form.serviceType === 'ramassage' ? 'Nombre de bâtiments *' : 'Surface totale (m²) *'}
+          </label>
+          <input required type="number" className={inputCls} value={form.details} onChange={(e) => set('details', e.target.value)} 
+            placeholder={form.serviceType === 'ramassage' ? 'Ex: 4' : 'Ex: 1200'} />
+        </div>
       </div>
+
+      <div>
+        <label className={labelCls}>Fréquence souhaitée</label>
+        <select className={inputCls} value={form.frequency} onChange={(e) => set('frequency', e.target.value)}>
+          <option value="unique">Intervention ponctuelle</option>
+          <option value="hebdomadaire">Hebdomadaire</option>
+          <option value="mensuelle">Mensuelle</option>
+          <option value="annuelle">Contrat annuel</option>
+        </select>
+      </div>
+
+      <div>
+        <label className={labelCls}>Informations complémentaires</label>
+        <textarea rows={3} className={inputCls} value={form.message} onChange={(e) => set('message', e.target.value)} placeholder="Précisez vos contraintes (accès, horaires, protocoles...)" />
+      </div>
+
       <button type="submit" disabled={sending}
-        className="w-full flex items-center justify-center gap-2 py-3.5 bg-primary text-white rounded-xl font-semibold hover:bg-primary-light transition-colors disabled:opacity-50">
-        <Send size={18} /> {sending ? 'Envoi…' : 'Envoyer le message'}
+        className="w-full flex items-center justify-center gap-2 py-4 bg-accent text-white rounded-2xl font-black italic hover:bg-accent-light transition-all shadow-lg shadow-accent/20 disabled:opacity-50 text-lg uppercase tracking-tighter">
+        <Send size={20} /> {sending ? 'Préparation...' : 'Recevoir mon devis'}
       </button>
     </form>
   )
@@ -97,6 +210,15 @@ function ContactForm() {
 
 export default function Landing() {
   const { isInstallable, install } = usePWAInstall()
+  const [simulationData, setSimulationData] = useState(null)
+  const contactFormRef = useRef(null)
+
+  const handleSimulationSubmit = (data) => {
+    setSimulationData(data)
+    // Scroll to contact
+    const contactSection = document.getElementById('contact')
+    if (contactSection) contactSection.scrollIntoView({ behavior: 'smooth' })
+  }
 
   return (
     <PublicLayout>
@@ -166,6 +288,32 @@ export default function Landing() {
                 </ul>
               </div>
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* QUOTE SYSTEM */}
+      <section id="devis" className="py-20 px-4 bg-slate-50 relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-1/3 h-full bg-primary/5 -skew-x-12 translate-x-1/2" />
+        <div className="max-w-6xl mx-auto relative">
+          <div className="grid lg:grid-cols-2 gap-12 items-center">
+            <div>
+              <span className="text-primary font-semibold text-sm uppercase tracking-widest">Estimation & Devis</span>
+              <h2 className="text-3xl md:text-5xl font-black text-slate-900 mt-2 mb-6">Demandez votre tarif <br />en un clic.</h2>
+              <p className="text-lg text-slate-600 leading-relaxed mb-8">
+                Sélectionnez votre besoin pour être mis en relation avec notre service commercial et recevoir une proposition adaptée.
+              </p>
+              
+              <div className="flex flex-col sm:flex-row gap-4 mb-8">
+                <Link to="/espace-pro" className="inline-flex items-center gap-2 text-primary font-bold hover:underline">
+                  Consulter mes devis existants <ArrowUpRight size={18} />
+                </Link>
+              </div>
+            </div>
+
+            <div className="relative">
+              <QuoteCards onSelect={handleSimulationSubmit} />
+            </div>
           </div>
         </div>
       </section>
@@ -249,7 +397,7 @@ export default function Landing() {
               </div>
             </div>
             <div className="bg-slate-50 rounded-2xl p-6 border border-slate-100">
-              <ContactForm />
+              <ContactForm simulationData={simulationData} />
             </div>
           </div>
         </div>
