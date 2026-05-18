@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react'
 import { Link } from 'react-router-dom'
-import { CheckCircle, ArrowRight, Mail, Phone, MapPin, Send, Download } from 'lucide-react'
+import { CheckCircle, ArrowRight, Mail, Phone, MapPin, Send, Download, Users, Building2 } from 'lucide-react'
 import PublicLayout from '../../components/layout/PublicLayout'
 import { db } from '../../db/db'
 import { usePWAInstall } from '../../hooks/usePWAInstall'
@@ -115,21 +115,20 @@ export default function Landing() {
             <p className="text-lg md:text-xl text-white/80 leading-relaxed mb-8">
               AgriClean intervient auprès des éleveurs et industriels avec réactivité et professionnalisme. Ramassage d'œufs, nettoyage agricole et industriel — une seule équipe, toutes vos interventions.
             </p>
-            <div className="flex flex-col sm:flex-row gap-4">
+            <div className="flex flex-col sm:flex-row gap-3">
               <Link to="/espace-pro"
-                className="inline-flex items-center justify-center gap-2 px-6 py-4 bg-accent text-white font-bold rounded-2xl hover:bg-accent-light transition-colors shadow-lg">
-                Accéder à mon espace <ArrowRight size={18} />
+                className="inline-flex items-center justify-center gap-2 px-6 py-4 bg-accent text-white font-bold rounded-2xl hover:bg-accent-light transition-colors shadow-lg shadow-accent/20">
+                <Building2 size={20} /> Espace Client
               </Link>
-              {isInstallable ? (
+              <Link to="/connexion"
+                className="inline-flex items-center justify-center gap-2 px-6 py-4 bg-white text-primary font-bold rounded-2xl hover:bg-slate-50 transition-colors shadow-lg">
+                <Users size={20} /> Espace Équipe
+              </Link>
+              {isInstallable && (
                 <button onClick={install}
-                  className="inline-flex items-center justify-center gap-2 px-6 py-4 bg-white text-primary font-bold rounded-2xl hover:bg-slate-50 transition-colors shadow-lg">
-                  <Download size={18} /> Installer l'application
-                </button>
-              ) : (
-                <a href="#contact"
                   className="inline-flex items-center justify-center gap-2 px-6 py-4 bg-white/10 border border-white/30 text-white font-semibold rounded-2xl hover:bg-white/20 transition-colors">
-                  Nous contacter
-                </a>
+                  <Download size={20} /> Installer l'app
+                </button>
               )}
             </div>
           </div>
