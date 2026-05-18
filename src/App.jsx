@@ -34,6 +34,7 @@ const InvoiceList = lazy(() => import('./pages/invoicing/InvoiceList'))
 const InvoiceDetail = lazy(() => import('./pages/invoicing/InvoiceDetail'))
 const QuoteDetail = lazy(() => import('./pages/invoicing/QuoteDetail'))
 const Settings = lazy(() => import('./pages/Settings'))
+const EmployeeSpace = lazy(() => import('./pages/employee/EmployeeSpace'))
 
 function Spinner() {
   return (
@@ -80,6 +81,7 @@ export default function App() {
   const loadQuotes = useQuoteStore((s) => s.load)
   const loadSettings = useSettingsStore((s) => s.load)
   const managerLoggedIn = useAuthStore((s) => s.managerLoggedIn)
+  const employeeSession = useAuthStore((s) => s.employeeSession)
 
   const escalateOverdue = useInvoiceStore((s) => s.escalateOverdue)
 
@@ -108,12 +110,21 @@ export default function App() {
           <Route path="/candidats" element={<CandidatPortal />} />
           <Route path="/espace-pro" element={<ClientPortal />} />
           <Route path="/connexion" element={
-            managerLoggedIn ? <Navigate to="/dashboard" replace /> : <Login />
+            managerLoggedIn ? <Navigate to="/dashboard" replace /> : 
+            employeeSession ? <Navigate to="/mon-espace" replace /> :
+            <Login />
+          } />
+
+          {/* Employee route */}
+          <Route path="/mon-espace" element={
+            <ProtectedRoute requireEmployee>
+              <EmployeeSpace />
+            </ProtectedRoute>
           } />
 
           {/* Protected manager routes */}
           <Route path="/*" element={
-            <ProtectedRoute>
+            <ProtectedRoute requireManager>
               <ManagerApp />
             </ProtectedRoute>
           } />

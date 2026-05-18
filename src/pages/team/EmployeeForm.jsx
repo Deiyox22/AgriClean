@@ -11,7 +11,7 @@ export default function EmployeeForm({ initial, onSave, onClose }) {
     firstName: '', lastName: '', role: 'polyvalent',
     phone: '', email: '',
     licenses: [], availability: ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi'],
-    status: 'actif', notes: '',
+    status: 'actif', notes: '', pin: '',
   })
 
   const set = (key, val) => setForm((f) => ({ ...f, [key]: val }))
@@ -81,6 +81,29 @@ export default function EmployeeForm({ initial, onSave, onClose }) {
       <div>
         <label className={labelCls}>Notes</label>
         <textarea rows={2} className={inputCls} value={form.notes} onChange={(e) => set('notes', e.target.value)} placeholder="Ex : Ne peut pas conduire le camion citerne" />
+      </div>
+
+      <div className="pt-3 border-t border-slate-100">
+        <label className={labelCls}>
+          Code PIN employé (4 chiffres)
+          <span className="text-slate-400 font-normal ml-1">— permet à l'employé de se connecter à son espace</span>
+        </label>
+        <input
+          type="text"
+          inputMode="numeric"
+          maxLength={4}
+          pattern="[0-9]{4}"
+          className={inputCls}
+          value={form.pin ?? ''}
+          onChange={(e) => set('pin', e.target.value.replace(/\D/g, '').slice(0, 4))}
+          placeholder="Ex : 1234"
+        />
+        {form.pin && form.pin.length < 4 && (
+          <p className="text-xs text-amber-500 mt-1">Le PIN doit contenir exactement 4 chiffres</p>
+        )}
+        {form.pin?.length === 4 && (
+          <p className="text-xs text-green-600 mt-1">✓ PIN valide — l'employé pourra se connecter avec ce code</p>
+        )}
       </div>
 
       <div className="flex gap-3 pt-1">
