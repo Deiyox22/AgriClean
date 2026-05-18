@@ -1,8 +1,9 @@
 import { useState, useRef } from 'react'
 import { Link } from 'react-router-dom'
-import { CheckCircle, ArrowRight, Mail, Phone, MapPin, Send } from 'lucide-react'
+import { CheckCircle, ArrowRight, Mail, Phone, MapPin, Send, Download } from 'lucide-react'
 import PublicLayout from '../../components/layout/PublicLayout'
 import { db } from '../../db/db'
+import { usePWAInstall } from '../../hooks/usePWAInstall'
 
 const services = [
   {
@@ -95,6 +96,8 @@ function ContactForm() {
 }
 
 export default function Landing() {
+  const { isInstallable, install } = usePWAInstall()
+
   return (
     <PublicLayout>
       {/* HERO */}
@@ -117,10 +120,17 @@ export default function Landing() {
                 className="inline-flex items-center justify-center gap-2 px-6 py-4 bg-accent text-white font-bold rounded-2xl hover:bg-accent-light transition-colors shadow-lg">
                 Accéder à mon espace <ArrowRight size={18} />
               </Link>
-              <a href="#contact"
-                className="inline-flex items-center justify-center gap-2 px-6 py-4 bg-white/10 border border-white/30 text-white font-semibold rounded-2xl hover:bg-white/20 transition-colors">
-                Nous contacter
-              </a>
+              {isInstallable ? (
+                <button onClick={install}
+                  className="inline-flex items-center justify-center gap-2 px-6 py-4 bg-white text-primary font-bold rounded-2xl hover:bg-slate-50 transition-colors shadow-lg">
+                  <Download size={18} /> Installer l'application
+                </button>
+              ) : (
+                <a href="#contact"
+                  className="inline-flex items-center justify-center gap-2 px-6 py-4 bg-white/10 border border-white/30 text-white font-semibold rounded-2xl hover:bg-white/20 transition-colors">
+                  Nous contacter
+                </a>
+              )}
             </div>
           </div>
         </div>

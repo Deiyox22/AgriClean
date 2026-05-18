@@ -1,6 +1,6 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ClipboardList, Euro, Clock, AlertTriangle, Plus, TrendingUp } from 'lucide-react'
+import { ClipboardList, Euro, Clock, AlertTriangle, Plus, TrendingUp, Download, X } from 'lucide-react'
 import { startOfDay, endOfDay, startOfMonth, endOfMonth, subMonths, format, isWithinInterval } from 'date-fns'
 import { fr } from 'date-fns/locale'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
@@ -8,6 +8,7 @@ import { useMissionStore } from '../store/useMissionStore'
 import { useInvoiceStore } from '../store/useInvoiceStore'
 import { useClientStore } from '../store/useClientStore'
 import { useEmployeeStore } from '../store/useEmployeeStore'
+import { usePWAInstall } from '../hooks/usePWAInstall'
 import StatCard from '../components/ui/StatCard'
 import Card from '../components/ui/Card'
 import Badge from '../components/ui/Badge'
@@ -18,7 +19,9 @@ export default function Dashboard() {
   const invoices = useInvoiceStore((s) => s.invoices)
   const clients = useClientStore((s) => s.clients)
   const employees = useEmployeeStore((s) => s.employees)
+  const { isInstallable, install } = usePWAInstall()
   const navigate = useNavigate()
+  const [showInstallNote, setShowInstallNote] = useState(true)
 
   const now = new Date()
 
@@ -74,6 +77,28 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
+      {/* PWA Install Notification */}
+      {isInstallable && showInstallNote && (
+        <div className="bg-gradient-to-r from-primary to-[#2d6a4f] rounded-2xl p-4 shadow-lg text-white flex items-center gap-4 animate-in fade-in slide-in-from-top-4 duration-500">
+          <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center shrink-0">
+            <Download size={24} />
+          </div>
+          <div className="flex-1">
+            <p className="font-bold text-sm">Installer l'application AgriClean</p>
+            <p className="text-white/80 text-xs">Accédez plus rapidement à votre gestion et recevez les notifications.</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={install}
+              className="px-4 py-2 bg-accent text-white text-xs font-bold rounded-xl hover:bg-accent-light transition-colors shadow-sm">
+              Installer
+            </button>
+            <button onClick={() => setShowInstallNote(false)} className="p-2 hover:bg-white/10 rounded-lg transition-colors">
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard label="Missions aujourd'hui" value={todayMissions.length} icon={ClipboardList} color="primary" />
