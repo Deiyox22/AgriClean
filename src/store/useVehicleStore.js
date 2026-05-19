@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { db } from '../db/db'
+import { supabase, toDb, fromDb } from '../lib/supabase'
 
 export const useVehicleStore = create((set, get) => ({
   vehicles: [],
@@ -9,47 +9,55 @@ export const useVehicleStore = create((set, get) => ({
   load: async () => {
     set({ loading: true })
     try {
-      const [vehicles, equipment] = await Promise.all([
-        db.vehicles.toArray(),
-        db.equipment.toArray(),
+      const [{ data: vehicles, error: e1 }, { data: equipment, error: e2 }] = await Promise.all([
+        supabase.from('vehicles').select('*'),
+        supabase.from('equipment').select('*'),
       ])
-      set({ vehicles, equipment })
+      if (e1) throw e1
+      if (e2) throw e2
+      set({ vehicles: (vehicles || []).map(fromDb), equipment: (equipment || []).map(fromDb) })
     } finally {
       set({ loading: false })
     }
   },
 
   addVehicle: async (vehicle) => {
-    const id = await db.vehicles.add(vehicle)
-    const item = await db.vehicles.get(id)
+    const { data, error } = await supabase.from('vehicles').insert(toDb(vehicle)).select().single()
+    if (error) throw error
+    const item = fromDb(data)
     set((s) => ({ vehicles: [...s.vehicles, item] }))
-    return id
+    return item.id
   },
 
   updateVehicle: async (id, changes) => {
-    await db.vehicles.update(id, changes)
+    const { error } = await supabase.from('vehicles').update(toDb(changes)).eq('id', id)
+    if (error) throw error
     set((s) => ({ vehicles: s.vehicles.map((v) => (v.id === id ? { ...v, ...changes } : v)) }))
   },
 
   removeVehicle: async (id) => {
-    await db.vehicles.delete(id)
+    const { error } = await supabase.from('vehicles').delete().eq('id', id)
+    if (error) throw error
     set((s) => ({ vehicles: s.vehicles.filter((v) => v.id !== id) }))
   },
 
   addEquipment: async (item) => {
-    const id = await db.equipment.add(item)
-    const newItem = await db.equipment.get(id)
+    const { data, error } = await supabase.from('equipment').insert(toDb(item)).select().single()
+    if (error) throw error
+    const newItem = fromDb(data)
     set((s) => ({ equipment: [...s.equipment, newItem] }))
-    return id
+    return newItem.id
   },
 
   updateEquipment: async (id, changes) => {
-    await db.equipment.update(id, changes)
+    const { error } = await supabase.from('equipment').update(toDb(changes)).eq('id', id)
+    if (error) throw error
     set((s) => ({ equipment: s.equipment.map((e) => (e.id === id ? { ...e, ...changes } : e)) }))
   },
 
   removeEquipment: async (id) => {
-    await db.equipment.delete(id)
+    const { error } = await supabase.from('equipment').delete().eq('id', id)
+    if (error) throw error
     set((s) => ({ equipment: s.equipment.filter((e) => e.id !== id) }))
   },
 

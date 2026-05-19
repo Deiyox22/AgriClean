@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { db } from '../db/db'
+import { supabase, fromDb } from '../lib/supabase'
 
 export const useAuthStore = create(
   persist(
@@ -11,8 +11,8 @@ export const useAuthStore = create(
 
       // ── Manager ────────────────────────────────────────────────────────────
       loginManager: async (email, password) => {
-        const all = await db.settings.toArray()
-        const s = all[0]
+        const { data } = await supabase.from('settings').select('*').limit(1).maybeSingle()
+        const s = data ? fromDb(data) : null
         if (!s) return { ok: false, error: 'Paramètres introuvables.' }
         if (
           email.toLowerCase() === (s.adminEmail ?? 'admin@agriclean.fr').toLowerCase() &&
@@ -27,8 +27,9 @@ export const useAuthStore = create(
 
       // ── Employé ────────────────────────────────────────────────────────────
       loginEmployee: async (employeeId, pin) => {
-        const emp = await db.employees.get(Number(employeeId))
-        if (!emp) return { ok: false, error: 'Employé introuvable.' }
+        const { data } = await supabase.from('employees').select('*').eq('id', Number(employeeId)).maybeSingle()
+        if (!data) return { ok: false, error: 'Employé introuvable.' }
+        const emp = fromDb(data)
         if (!emp.pin) return { ok: false, error: 'Aucun code PIN défini. Demandez à votre manager de le configurer.' }
         if (String(emp.pin) !== String(pin)) return { ok: false, error: 'Code PIN incorrect.' }
         set({ employeeSession: { employeeId: emp.id, firstName: emp.firstName, lastName: emp.lastName } })
@@ -38,8 +39,9 @@ export const useAuthStore = create(
 
       // ── Client ─────────────────────────────────────────────────────────────
       loginClient: async (email, companyName) => {
-        const clients = await db.clients.toArray()
-        const match = clients.find((c) => {
+        const { data: clients } = await supabase.from('clients').select('*')
+        const list = (clients || []).map(fromDb)
+        const match = list.find((c) => {
           const nameMatch  = c.name.toLowerCase().includes(companyName.toLowerCase()) ||
                              companyName.toLowerCase().includes(c.name.toLowerCase())
           const emailMatch = c.contacts?.some((ct) => ct.email?.toLowerCase() === email.toLowerCase())

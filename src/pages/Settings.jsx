@@ -4,10 +4,11 @@ import { useEmployeeStore } from '../store/useEmployeeStore'
 import { useMissionStore } from '../store/useMissionStore'
 import { useInvoiceStore } from '../store/useInvoiceStore'
 import { useClientStore } from '../store/useClientStore'
-import { db } from '../db/db'
-import { seedIfEmpty } from '../db/db'
+import { supabase, fromDb } from '../lib/supabase'
+import { resetAndSeed } from '../db/db'
+import { useVehicleStore } from '../store/useVehicleStore'
 import Card from '../components/ui/Card'
-import { Eye, EyeOff, FileDown, BarChart3 } from 'lucide-react'
+import { Eye, EyeOff, FileDown, BarChart3, Upload, X } from 'lucide-react'
 import { generateMonthlyReport, exportHoursCSV } from '../utils/reports'
 
 export default function Settings() {
@@ -18,6 +19,8 @@ export default function Settings() {
   const missions  = useMissionStore((s) => s.missions)
   const invoices  = useInvoiceStore((s) => s.invoices)
   const clients   = useClientStore((s) => s.clients)
+  const vehicles  = useVehicleStore((s) => s.vehicles)
+  const equipment = useVehicleStore((s) => s.equipment)
   const [form, setForm] = useState(settings)
   const [saved, setSaved] = useState(false)
   const [showPw, setShowPw] = useState(false)
@@ -34,15 +37,7 @@ export default function Settings() {
   }
 
   const handleExport = async () => {
-    const data = {
-      clients: await db.clients.toArray(),
-      employees: await db.employees.toArray(),
-      missions: await db.missions.toArray(),
-      vehicles: await db.vehicles.toArray(),
-      equipment: await db.equipment.toArray(),
-      invoices: await db.invoices.toArray(),
-      settings: await db.settings.toArray(),
-    }
+    const data = { clients, employees, missions, vehicles, equipment, invoices, settings }
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -54,16 +49,7 @@ export default function Settings() {
 
   const handleReset = async () => {
     if (!confirm('Réinitialiser toutes les données avec les données de démonstration ? Cette action est irréversible.')) return
-    await db.clients.clear()
-    await db.employees.clear()
-    await db.missions.clear()
-    await db.vehicles.clear()
-    await db.equipment.clear()
-    await db.invoices.clear()
-    await db.quotes.clear()
-    await db.settings.clear()
-    await seedIfEmpty()
-    await load()
+    await resetAndSeed()
     window.location.reload()
   }
 
@@ -76,6 +62,38 @@ export default function Settings() {
       <Card className="p-5">
         <h2 className="font-semibold text-slate-900 mb-4">Informations entreprise</h2>
         <div className="space-y-3">
+          {/* Logo */}
+          <div>
+            <label className={labelCls}>Logo entreprise (affiché sur les PDFs)</label>
+            <div className="flex items-center gap-3">
+              {form.company?.logo && (
+                <img src={form.company.logo} alt="Logo" className="h-12 max-w-[120px] object-contain border border-slate-200 rounded-xl p-1.5 bg-white" />
+              )}
+              <label className="flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-200 text-sm text-slate-600 cursor-pointer hover:bg-slate-50 transition-colors">
+                <Upload size={14} />
+                {form.company?.logo ? 'Changer' : 'Importer'}
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files[0]
+                    if (!file) return
+                    const reader = new FileReader()
+                    reader.onload = (ev) => setCompany('logo', ev.target.result)
+                    reader.readAsDataURL(file)
+                  }}
+                />
+              </label>
+              {form.company?.logo && (
+                <button type="button" onClick={() => setCompany('logo', null)} className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors">
+                  <X size={15} />
+                </button>
+              )}
+            </div>
+            <p className="text-xs text-slate-400 mt-1">PNG ou SVG recommandé — affiché en haut des factures et devis</p>
+          </div>
+
           <div><label className={labelCls}>Nom de l'entreprise</label><input className={inputCls} value={form.company?.name ?? ''} onChange={(e) => setCompany('name', e.target.value)} /></div>
           <div><label className={labelCls}>SIRET</label><input className={inputCls} value={form.company?.siret ?? ''} onChange={(e) => setCompany('siret', e.target.value)} /></div>
           <div><label className={labelCls}>Adresse</label><input className={inputCls} value={form.company?.address ?? ''} onChange={(e) => setCompany('address', e.target.value)} /></div>
@@ -271,6 +289,31 @@ export default function Settings() {
             <FileDown size={16} /> Export heures CSV
           </button>
         </div>
+      </Card>
+
+      {/* Apparence */}
+      <Card className="p-5">
+        <h2 className="font-semibold text-slate-900 dark:text-slate-100 mb-4">Apparence</h2>
+        <label className="flex items-center justify-between cursor-pointer">
+          <div>
+            <p className="text-sm font-medium text-slate-700 dark:text-slate-300">Mode sombre</p>
+            <p className="text-xs text-slate-400 mt-0.5">Réduit la fatigue visuelle en faible luminosité</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              const next = form.theme === 'dark' ? 'light' : 'dark'
+              setForm((f) => ({ ...f, theme: next }))
+              document.documentElement.classList.toggle('dark', next === 'dark')
+              localStorage.setItem('agriclean-theme', next)
+              save({ theme: next })
+            }}
+            className={`relative w-12 h-6 rounded-full transition-colors ${form.theme === 'dark' ? 'bg-primary' : 'bg-slate-200'}`}
+            aria-label="Toggle dark mode"
+          >
+            <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${form.theme === 'dark' ? 'translate-x-6' : 'translate-x-0.5'}`} />
+          </button>
+        </label>
       </Card>
 
       {/* Data */}

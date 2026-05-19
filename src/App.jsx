@@ -11,6 +11,8 @@ import { useInvoiceStore } from './store/useInvoiceStore'
 import { useQuoteStore } from './store/useQuoteStore'
 import { useSettingsStore } from './store/useSettingsStore'
 import { useAuthStore } from './store/useAuthStore'
+import { useTeamStore } from './store/useTeamStore'
+import { useRealtime } from './hooks/useRealtime'
 
 // Public pages
 const Landing = lazy(() => import('./pages/public/Landing'))
@@ -25,6 +27,7 @@ const ClientDetail = lazy(() => import('./pages/clients/ClientDetail'))
 const TeamList = lazy(() => import('./pages/team/TeamList'))
 const EmployeeDetail = lazy(() => import('./pages/team/EmployeeDetail'))
 const EmployeeAgenda = lazy(() => import('./pages/team/EmployeeAgenda'))
+const Candidatures = lazy(() => import('./pages/team/Candidatures'))
 const Planning = lazy(() => import('./pages/planning/Planning'))
 const MissionList = lazy(() => import('./pages/missions/MissionList'))
 const MissionDetail = lazy(() => import('./pages/missions/MissionDetail'))
@@ -35,6 +38,8 @@ const InvoiceDetail = lazy(() => import('./pages/invoicing/InvoiceDetail'))
 const QuoteDetail = lazy(() => import('./pages/invoicing/QuoteDetail'))
 const Settings = lazy(() => import('./pages/Settings'))
 const EmployeeSpace = lazy(() => import('./pages/employee/EmployeeSpace'))
+const Rapports = lazy(() => import('./pages/Rapports'))
+const Alertes  = lazy(() => import('./pages/Alertes'))
 
 function Spinner() {
   return (
@@ -53,6 +58,7 @@ function ManagerApp() {
           <Route path="/clients" element={<ClientList />} />
           <Route path="/clients/:id" element={<ClientDetail />} />
           <Route path="/team" element={<TeamList />} />
+          <Route path="/team/candidatures" element={<Candidatures />} />
           <Route path="/team/:id" element={<EmployeeDetail />} />
           <Route path="/team/:id/agenda" element={<EmployeeAgenda />} />
           <Route path="/planning" element={<Planning />} />
@@ -64,6 +70,8 @@ function ManagerApp() {
           <Route path="/invoicing" element={<InvoiceList />} />
           <Route path="/invoicing/devis/:id" element={<QuoteDetail />} />
           <Route path="/invoicing/:id" element={<InvoiceDetail />} />
+          <Route path="/rapports" element={<Rapports />} />
+          <Route path="/alertes" element={<Alertes />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
@@ -80,13 +88,25 @@ export default function App() {
   const loadInvoices = useInvoiceStore((s) => s.load)
   const loadQuotes = useQuoteStore((s) => s.load)
   const loadSettings = useSettingsStore((s) => s.load)
+  const loadTeams    = useTeamStore((s) => s.load)
   const managerLoggedIn = useAuthStore((s) => s.managerLoggedIn)
   const employeeSession = useAuthStore((s) => s.employeeSession)
 
   const escalateOverdue = useInvoiceStore((s) => s.escalateOverdue)
+  const theme = useSettingsStore((s) => s.settings.theme)
+
+  // Apply dark mode class + persist in localStorage
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', theme === 'dark')
+    localStorage.setItem('agriclean-theme', theme ?? 'light')
+  }, [theme])
+
+  // Supabase Realtime sync
+  useRealtime()
 
   useEffect(() => {
-    seedIfEmpty().then(async () => {
+    const init = async () => {
+      await seedIfEmpty()
       await Promise.all([
         loadClients(),
         loadEmployees(),
@@ -95,10 +115,11 @@ export default function App() {
         loadInvoices(),
         loadQuotes(),
         loadSettings(),
+        loadTeams(),
       ])
-      // Escalade automatique des factures en retard (silencieuse)
       escalateOverdue()
-    })
+    }
+    init()
   }, [])
 
   return (

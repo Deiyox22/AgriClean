@@ -1,39 +1,167 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { LogOut, CalendarDays, Clock, CheckCircle, Circle, MapPin, Phone, ChevronLeft, ChevronRight } from 'lucide-react'
 import {
-  isToday, isTomorrow, addDays, subDays, startOfWeek, endOfWeek,
+  LogOut, Clock, CheckCircle, Circle, MapPin, Phone,
+  ChevronLeft, ChevronRight, Flag, X, Pen,
+} from 'lucide-react'
+import {
+  isToday, isTomorrow, addDays, subDays, startOfWeek,
   startOfMonth, endOfMonth, isWithinInterval, format, isSameDay,
 } from 'date-fns'
 import { fr } from 'date-fns/locale'
 import { useAuthStore } from '../../store/useAuthStore'
 import { useMissionStore } from '../../store/useMissionStore'
 import { useClientStore } from '../../store/useClientStore'
+import { useEmployeeStore } from '../../store/useEmployeeStore'
 import { getMissionTypeLabel, getStatusLabel, getStatusBadgeClass, getInitials } from '../../utils/formatters'
 import Badge from '../../components/ui/Badge'
+import { toast } from '../../store/useToastStore'
 
-const TYPE_BG = {
-  ramassage:           'bg-amber-50  border-amber-200',
-  nettoyage_agricole:  'bg-blue-50   border-blue-200',
-  nettoyage_industriel:'bg-indigo-50 border-indigo-200',
-}
+const TYPE_BG   = { ramassage: 'bg-amber-50 border-amber-200', nettoyage_agricole: 'bg-blue-50 border-blue-200', nettoyage_industriel: 'bg-indigo-50 border-indigo-200' }
 const TYPE_ICON = { ramassage: '🥚', nettoyage_agricole: '🌿', nettoyage_industriel: '🏭' }
 
+// ── Signature pad ─────────────────────────────────────────────────────────────
+function SignaturePad({ onChange }) {
+  const canvasRef    = useRef(null)
+  const drawing      = useRef(false)
+  const [hasSig, setHasSig] = useState(false)
+
+  const getPos = (e) => {
+    const canvas = canvasRef.current
+    const rect   = canvas.getBoundingClientRect()
+    const src    = e.touches ? e.touches[0] : e
+    return {
+      x: (src.clientX - rect.left) * (canvas.width / rect.width),
+      y: (src.clientY - rect.top)  * (canvas.height / rect.height),
+    }
+  }
+
+  const start = (e) => {
+    e.preventDefault()
+    drawing.current = true
+    const ctx = canvasRef.current.getContext('2d')
+    const { x, y } = getPos(e)
+    ctx.beginPath(); ctx.moveTo(x, y)
+  }
+
+  const move = (e) => {
+    if (!drawing.current) return
+    e.preventDefault()
+    const ctx = canvasRef.current.getContext('2d')
+    ctx.lineWidth = 2.5; ctx.lineCap = 'round'; ctx.lineJoin = 'round'
+    ctx.strokeStyle = '#1a4731'
+    const { x, y } = getPos(e)
+    ctx.lineTo(x, y); ctx.stroke()
+    setHasSig(true)
+  }
+
+  const stop = () => {
+    if (!drawing.current) return
+    drawing.current = false
+    onChange(canvasRef.current.toDataURL('image/png'))
+  }
+
+  const clear = () => {
+    const c = canvasRef.current
+    c.getContext('2d').clearRect(0, 0, c.width, c.height)
+    setHasSig(false); onChange(null)
+  }
+
+  return (
+    <div>
+      <div className="border-2 border-dashed border-slate-200 rounded-2xl overflow-hidden bg-slate-50">
+        <canvas
+          ref={canvasRef} width={600} height={180}
+          className="w-full touch-none cursor-crosshair"
+          style={{ touchAction: 'none' }}
+          onMouseDown={start} onMouseMove={move} onMouseUp={stop} onMouseLeave={stop}
+          onTouchStart={start} onTouchMove={move} onTouchEnd={stop}
+        />
+      </div>
+      <div className="flex items-center justify-between mt-1">
+        <p className="text-xs text-slate-400 flex items-center gap-1"><Pen size={11} /> Signez avec votre doigt</p>
+        {hasSig && <button type="button" onClick={clear} className="text-xs text-red-400 hover:text-red-600">Effacer</button>}
+      </div>
+    </div>
+  )
+}
+
+// ── Cloture modal ─────────────────────────────────────────────────────────────
+function ClotureModal({ mission, onClose, onSave }) {
+  const [realDuration, setRealDuration] = useState(mission.duration ?? 2)
+  const [notes, setNotes]               = useState('')
+  const [signature, setSignature]       = useState(null)
+  const [saving, setSaving]             = useState(false)
+  const inputCls = 'w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary'
+
+  const handleSave = async () => {
+    setSaving(true)
+    try {
+      await onSave({ realDuration: Number(realDuration), notes, signature })
+      onClose()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden">
+        <div className="flex items-center justify-between px-5 pt-5 pb-3">
+          <p className="font-bold text-slate-900">Clôturer la mission</p>
+          <button onClick={onClose} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600"><X size={16} /></button>
+        </div>
+        <div className="px-5 pb-6 space-y-4">
+          <div className="p-3 bg-slate-50 rounded-2xl text-sm text-slate-700">
+            <p className="font-semibold">{getMissionTypeLabel(mission.type)}</p>
+            <p className="text-slate-500 text-xs mt-0.5">{format(new Date(mission.date), 'EEEE d MMMM · HH:mm', { locale: fr })}</p>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Durée réelle (heures)</label>
+            <input type="number" min="0" step="0.5" className={inputCls} value={realDuration}
+              onChange={(e) => setRealDuration(e.target.value)} />
+            <p className="text-xs text-slate-400 mt-1">Durée estimée : {mission.duration}h</p>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Notes / observations (optionnel)</label>
+            <textarea rows={2} className={inputCls} value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Incident, remarque, quantité réelle…" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-2">Signature</label>
+            <SignaturePad onChange={setSignature} />
+          </div>
+          <div className="flex gap-3">
+            <button onClick={onClose} className="flex-1 py-3 rounded-2xl border-2 border-slate-200 text-slate-700 font-semibold text-sm hover:bg-slate-50">
+              Annuler
+            </button>
+            <button onClick={handleSave} disabled={saving}
+              className="flex-1 py-3 rounded-2xl bg-green-500 text-white font-semibold text-sm hover:bg-green-600 disabled:opacity-40">
+              {saving ? 'Enregistrement…' : '✓ Clôturer'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Mission card ──────────────────────────────────────────────────────────────
-function MissionCard({ mission, client, size = 'md' }) {
+function MissionCard({ mission, client, size = 'md', onCloture, allEmployees = [] }) {
   const bg = TYPE_BG[mission.type] ?? 'bg-slate-50 border-slate-200'
+  const canClose = mission.status === 'en_cours' || mission.status === 'planifie'
 
   if (size === 'lg') {
     return (
       <div className={`p-4 rounded-2xl border-2 ${bg}`}>
         <div className="flex items-start justify-between gap-2 mb-3">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-2xl">{TYPE_ICON[mission.type] ?? '📋'}</span>
-              <div>
-                <p className="font-bold text-slate-900">{getMissionTypeLabel(mission.type)}</p>
-                <p className="text-sm text-slate-600 font-medium">{client?.name ?? '—'}</p>
-              </div>
+          <div className="flex items-center gap-2">
+            <span className="text-2xl">{TYPE_ICON[mission.type] ?? '📋'}</span>
+            <div>
+              <p className="font-bold text-slate-900">{getMissionTypeLabel(mission.type)}</p>
+              <p className="text-sm text-slate-600 font-medium">{client?.name ?? '—'}</p>
             </div>
           </div>
           <Badge className={getStatusBadgeClass(mission.status)}>{getStatusLabel(mission.status)}</Badge>
@@ -59,13 +187,12 @@ function MissionCard({ mission, client, size = 'md' }) {
         </div>
 
         {mission.instructions && (
-          <div className="mt-3 p-2.5 bg-white/60 rounded-xl text-xs text-slate-600 border border-white">
+          <div className="mt-3 p-2.5 bg-white/60 rounded-xl text-xs text-slate-600 border border-white/80">
             <p className="font-semibold text-slate-500 mb-1">Instructions</p>
             {mission.instructions}
           </div>
         )}
 
-        {/* Checklist */}
         {mission.cleaningData?.checklist?.length > 0 && (
           <div className="mt-3 space-y-1.5">
             <p className="text-xs font-semibold text-slate-500">Check-list</p>
@@ -77,6 +204,43 @@ function MissionCard({ mission, client, size = 'md' }) {
                 <span className={item.done ? 'line-through text-slate-400' : ''}>{item.label}</span>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Collègues */}
+        {allEmployees.length > 0 && (mission.teamIds ?? []).length > 1 && (
+          <div className="mt-3 pt-2.5 border-t border-white/40">
+            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Équipe</p>
+            <div className="flex flex-wrap gap-2">
+              {(mission.teamIds ?? []).map((tid, i) => {
+                const emp = allEmployees.find((e) => e.id === tid)
+                if (!emp) return null
+                return (
+                  <div key={tid} className="flex items-center gap-1.5 bg-white/60 rounded-lg px-2 py-1">
+                    <div className={`w-5 h-5 rounded-full ${EMP_COLORS[i % EMP_COLORS.length]} flex items-center justify-center text-white text-[9px] font-bold shrink-0`}>
+                      {getInitials(emp.firstName, emp.lastName)}
+                    </div>
+                    <span className="text-xs text-slate-700 font-medium">{emp.firstName}</span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {canClose && onCloture && (
+          <button
+            onClick={() => onCloture(mission)}
+            className="mt-4 w-full flex items-center justify-center gap-2 py-3 rounded-2xl bg-green-500 text-white text-sm font-bold hover:bg-green-600 transition-colors"
+          >
+            <Flag size={15} /> Mission terminée
+          </button>
+        )}
+
+        {mission.status === 'termine' && mission.report && (
+          <div className="mt-3 p-2.5 bg-green-50 rounded-xl border border-green-100 text-xs text-green-700">
+            <p className="font-semibold">✓ Clôturée — {mission.report.realDuration}h réelles</p>
+            {mission.report.notes && <p className="mt-0.5 text-green-600">{mission.report.notes}</p>}
           </div>
         )}
       </div>
@@ -99,7 +263,6 @@ function MissionCard({ mission, client, size = 'md' }) {
 function WeekStrip({ currentDay, missions, empId, onDaySelect }) {
   const weekStart = startOfWeek(currentDay, { weekStartsOn: 1 })
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
-
   return (
     <div className="grid grid-cols-7 gap-1 bg-white rounded-2xl border border-slate-100 p-3">
       {days.map((day) => {
@@ -108,9 +271,7 @@ function WeekStrip({ currentDay, missions, empId, onDaySelect }) {
         const today  = isToday(day)
         return (
           <button key={day.toISOString()} onClick={() => onDaySelect(day)}
-            className={`flex flex-col items-center py-2 px-1 rounded-xl transition-colors ${
-              active ? 'bg-primary text-white' : today ? 'bg-primary/10 text-primary' : 'hover:bg-slate-50 text-slate-600'
-            }`}>
+            className={`flex flex-col items-center py-2 px-1 rounded-xl transition-colors ${active ? 'bg-primary text-white' : today ? 'bg-primary/10 text-primary' : 'hover:bg-slate-50 text-slate-600'}`}>
             <span className="text-[9px] font-bold uppercase">{format(day, 'EEE', { locale: fr }).slice(0, 2)}</span>
             <span className="text-sm font-black leading-tight">{format(day, 'd')}</span>
             {hasMission && <div className={`w-1.5 h-1.5 rounded-full mt-0.5 ${active ? 'bg-white/60' : 'bg-primary'}`} />}
@@ -123,14 +284,18 @@ function WeekStrip({ currentDay, missions, empId, onDaySelect }) {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function EmployeeSpace() {
-  const empSession   = useAuthStore((s) => s.employeeSession)
+  const empSession    = useAuthStore((s) => s.employeeSession)
   const logoutEmployee = useAuthStore((s) => s.logoutEmployee)
-  const missions     = useMissionStore((s) => s.missions)
-  const getClient    = useClientStore((s) => s.getById)
-  const navigate     = useNavigate()
-  const [currentDay, setCurrentDay] = useState(new Date())
-  const [tab, setTab] = useState('today') // 'today' | 'week'
-  const [showLogout, setShowLogout] = useState(false)
+  const missions      = useMissionStore((s) => s.missions)
+  const updateMission = useMissionStore((s) => s.update)
+  const getClient     = useClientStore((s) => s.getById)
+  const allEmployees  = useEmployeeStore((s) => s.employees)
+  const navigate      = useNavigate()
+
+  const [currentDay,   setCurrentDay]   = useState(new Date())
+  const [tab,          setTab]          = useState('today')
+  const [showLogout,   setShowLogout]   = useState(false)
+  const [clotureModal, setClotureModal] = useState(null)
 
   if (!empSession) { navigate('/connexion'); return null }
 
@@ -168,17 +333,22 @@ export default function EmployeeSpace() {
     ).length
   }, [empMissions])
 
+  const handleCloture = async (mission, { realDuration, notes }) => {
+    await updateMission(mission.id, {
+      status: 'termine',
+      report: { realDuration, notes, incidents: [], consumables: [] },
+    })
+    toast.success('Mission clôturée avec succès')
+  }
+
   const handleLogout = () => { logoutEmployee(); navigate('/connexion') }
 
-  const dayLabel = isToday(currentDay)
-    ? "Aujourd'hui"
-    : isTomorrow(currentDay)
-    ? 'Demain'
+  const dayLabel = isToday(currentDay) ? "Aujourd'hui"
+    : isTomorrow(currentDay) ? 'Demain'
     : format(currentDay, 'EEEE d MMMM', { locale: fr })
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans flex flex-col">
-      {/* Header */}
       <header className="bg-primary text-white px-4 pt-12 pb-6">
         <div className="max-w-lg mx-auto">
           <div className="flex items-center justify-between mb-4">
@@ -191,13 +361,10 @@ export default function EmployeeSpace() {
                 <p className="text-white/70 text-sm">Mon espace</p>
               </div>
             </div>
-            <button onClick={() => setShowLogout(true)}
-              className="p-2 rounded-xl bg-white/10 hover:bg-white/20 transition-colors" aria-label="Déconnexion">
+            <button onClick={() => setShowLogout(true)} className="p-2 rounded-xl bg-white/10 hover:bg-white/20 transition-colors" aria-label="Déconnexion">
               <LogOut size={18} />
             </button>
           </div>
-
-          {/* Stats bar */}
           <div className="grid grid-cols-3 gap-2 mt-2">
             {[
               { label: "Missions aujourd'hui", value: todayMissions.length },
@@ -213,25 +380,16 @@ export default function EmployeeSpace() {
         </div>
       </header>
 
-      {/* Content */}
       <main className="flex-1 max-w-lg mx-auto w-full px-4 py-5 space-y-4 pb-24">
-
-        {/* Tabs */}
         <div className="flex gap-1 bg-white rounded-2xl border border-slate-100 p-1">
-          {[
-            { key: 'today', label: "Aujourd'hui", icon: '📅' },
-            { key: 'week',  label: 'Semaine',     icon: '🗓' },
-          ].map((t) => (
+          {[{ key: 'today', label: "Aujourd'hui", icon: '📅' }, { key: 'week', label: 'Semaine', icon: '🗓' }].map((t) => (
             <button key={t.key} onClick={() => setTab(t.key)}
-              className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold transition-colors ${
-                tab === t.key ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-50'
-              }`}>
+              className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold transition-colors ${tab === t.key ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-50'}`}>
               <span>{t.icon}</span> {t.label}
             </button>
           ))}
         </div>
 
-        {/* Today tab */}
         {tab === 'today' && (
           <div className="space-y-3">
             <p className="text-xs font-bold text-slate-400 uppercase tracking-widest px-1">
@@ -245,30 +403,25 @@ export default function EmployeeSpace() {
               </div>
             ) : (
               todayMissions.map((m) => (
-                <MissionCard key={m.id} mission={m} client={getClient(m.clientId)} size="lg" />
+                <MissionCard key={m.id} mission={m} client={getClient(m.clientId)} size="lg"
+                  allEmployees={allEmployees} onCloture={(mission) => setClotureModal(mission)} />
               ))
             )}
           </div>
         )}
 
-        {/* Week tab */}
         {tab === 'week' && (
           <div className="space-y-4">
-            {/* Day navigator */}
             <div className="flex items-center gap-2">
-              <button onClick={() => setCurrentDay((d) => subDays(d, 1))}
-                className="p-2 rounded-xl hover:bg-white hover:border hover:border-slate-100 transition-colors" aria-label="Jour précédent">
+              <button onClick={() => setCurrentDay((d) => subDays(d, 1))} className="p-2 rounded-xl hover:bg-white hover:border hover:border-slate-100 transition-colors" aria-label="Jour précédent">
                 <ChevronLeft size={20} className="text-slate-600" />
               </button>
               <p className="flex-1 text-center text-sm font-bold text-slate-800 capitalize">{dayLabel}</p>
-              <button onClick={() => setCurrentDay((d) => addDays(d, 1))}
-                className="p-2 rounded-xl hover:bg-white hover:border hover:border-slate-100 transition-colors" aria-label="Jour suivant">
+              <button onClick={() => setCurrentDay((d) => addDays(d, 1))} className="p-2 rounded-xl hover:bg-white hover:border hover:border-slate-100 transition-colors" aria-label="Jour suivant">
                 <ChevronRight size={20} className="text-slate-600" />
               </button>
             </div>
-
             <WeekStrip currentDay={currentDay} missions={empMissions} empId={empId} onDaySelect={setCurrentDay} />
-
             <div className="space-y-2">
               {selectedDayMissions.length === 0 ? (
                 <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center">
@@ -276,7 +429,8 @@ export default function EmployeeSpace() {
                 </div>
               ) : (
                 selectedDayMissions.map((m) => (
-                  <MissionCard key={m.id} mission={m} client={getClient(m.clientId)} size="lg" />
+                  <MissionCard key={m.id} mission={m} client={getClient(m.clientId)} size="lg"
+                    allEmployees={allEmployees} onCloture={(mission) => setClotureModal(mission)} />
                 ))
               )}
             </div>
@@ -284,7 +438,7 @@ export default function EmployeeSpace() {
         )}
       </main>
 
-      {/* Logout confirm overlay */}
+      {/* Logout overlay */}
       {showLogout && (
         <div className="fixed inset-0 z-50 flex items-end justify-center p-4">
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowLogout(false)} />
@@ -297,17 +451,20 @@ export default function EmployeeSpace() {
               <p className="text-sm text-slate-500 mt-1">Vous devrez ressaisir votre PIN pour revenir.</p>
             </div>
             <div className="flex gap-3 px-6 pb-6">
-              <button onClick={() => setShowLogout(false)}
-                className="flex-1 py-3 rounded-2xl border-2 border-slate-200 text-slate-700 font-semibold text-sm hover:bg-slate-50">
-                Annuler
-              </button>
-              <button onClick={handleLogout}
-                className="flex-1 py-3 rounded-2xl bg-red-500 text-white font-semibold text-sm hover:bg-red-600">
-                Déconnecter
-              </button>
+              <button onClick={() => setShowLogout(false)} className="flex-1 py-3 rounded-2xl border-2 border-slate-200 text-slate-700 font-semibold text-sm hover:bg-slate-50">Annuler</button>
+              <button onClick={handleLogout} className="flex-1 py-3 rounded-2xl bg-red-500 text-white font-semibold text-sm hover:bg-red-600">Déconnecter</button>
             </div>
           </div>
         </div>
+      )}
+
+      {/* Cloture modal */}
+      {clotureModal && (
+        <ClotureModal
+          mission={clotureModal}
+          onClose={() => setClotureModal(null)}
+          onSave={(data) => handleCloture(clotureModal, data)}
+        />
       )}
     </div>
   )

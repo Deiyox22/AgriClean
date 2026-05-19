@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Download, Mail, CheckCircle, XCircle, FileText, Pencil } from 'lucide-react'
+import { ArrowLeft, Download, Mail, CheckCircle, XCircle, FileText, Pencil, ClipboardList } from 'lucide-react'
 import { useQuoteStore } from '../../store/useQuoteStore'
 import { useInvoiceStore } from '../../store/useInvoiceStore'
 import { useClientStore } from '../../store/useClientStore'
@@ -167,6 +167,11 @@ export default function QuoteDetail() {
     navigate('/invoicing')
   }
 
+  const handleCreateMission = () => {
+    const params = new URLSearchParams({ clientId: quote.clientId })
+    navigate(`/missions/new?${params.toString()}`)
+  }
+
   const openEdit = () => {
     setEditLines(quote.lines.map((l) => ({ ...l })))
     setEditTax(quote.tax ?? 20)
@@ -300,11 +305,16 @@ export default function QuoteDetail() {
             ))}
           </div>
           {quote.status === 'accepte' && (
-            <div className="mt-3 p-3 bg-green-50 rounded-xl flex items-center justify-between">
-              <p className="text-sm text-green-700 font-medium">✓ Devis accepté — prêt à être facturé</p>
-              <button onClick={handleConvertToInvoice} className="flex items-center gap-1.5 px-3 py-2 bg-primary text-white rounded-xl text-xs font-medium hover:bg-primary-light">
-                <FileText size={14} /> Convertir en facture
-              </button>
+            <div className="mt-3 p-3 bg-green-50 rounded-xl space-y-2">
+              <p className="text-sm text-green-700 font-medium">✓ Devis accepté</p>
+              <div className="flex gap-2 flex-wrap">
+                <button onClick={handleConvertToInvoice} className="flex items-center gap-1.5 px-3 py-2 bg-primary text-white rounded-xl text-xs font-medium hover:bg-primary-light">
+                  <FileText size={14} /> Convertir en facture
+                </button>
+                <button onClick={handleCreateMission} className="flex items-center gap-1.5 px-3 py-2 bg-green-600 text-white rounded-xl text-xs font-medium hover:bg-green-700">
+                  <ClipboardList size={14} /> Créer la mission
+                </button>
+              </div>
             </div>
           )}
         </Card>

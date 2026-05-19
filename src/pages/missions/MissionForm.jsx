@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, ChevronRight, ChevronLeft, MapPin, Check, Car } from 'lucide-react'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { ArrowLeft, ChevronRight, ChevronLeft, MapPin, Check, Car, Users } from 'lucide-react'
 import { format } from 'date-fns'
 import { useMissionStore } from '../../store/useMissionStore'
+import { useTeamStore, teamColorCls } from '../../store/useTeamStore'
 import { useClientStore } from '../../store/useClientStore'
 import { useEmployeeStore } from '../../store/useEmployeeStore'
 import { useVehicleStore } from '../../store/useVehicleStore'
@@ -69,17 +70,29 @@ const EMP_COLORS = [
 export default function MissionForm() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const add    = useMissionStore((s) => s.add)
-  const update = useMissionStore((s) => s.update)
-  const getById = useMissionStore((s) => s.getById)
+  const [searchParams] = useSearchParams()
+  const add      = useMissionStore((s) => s.add)
+  const update   = useMissionStore((s) => s.update)
+  const getById  = useMissionStore((s) => s.getById)
+  const missions = useMissionStore((s) => s.missions)
   const clients        = useClientStore((s) => s.clients)
   const getClient      = useClientStore((s) => s.getById)
   const employees      = useEmployeeStore((s) => s.employees)
   const vehicles       = useVehicleStore((s) => s.vehicles)
   const travelSettings = useSettingsStore((s) => s.settings.travelSettings)
+  const teams          = useTeamStore((s) => s.teams)
 
   const [step, setStep]   = useState(0)
-  const [form, setForm]   = useState(defaultForm())
+  const [form, setForm]   = useState(() => {
+    const df         = defaultForm()
+    const preDate    = searchParams.get('date')
+    const preClient  = searchParams.get('clientId')
+    return {
+      ...df,
+      ...(preDate   ? { date:     preDate              } : {}),
+      ...(preClient ? { clientId: preClient            } : {}),
+    }
+  })
   const [saving, setSaving] = useState(false)
   const [newProduct, setNewProduct] = useState('')
   const [newCheckItem, setNewCheckItem] = useState('')
@@ -473,18 +486,53 @@ export default function MissionForm() {
       {/* ── Step 2 : Équipe & matériel ────────────────────────────────────── */}
       {step === 1 && (
         <div className="space-y-4">
+          {/* Équipes prédéfinies */}
+          {teams.length > 0 && (
+            <div>
+              <label className={labelCls}>
+                <Users size={12} className="inline mr-1" />
+                Charger une équipe prédéfinie
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {teams.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => set('teamIds', t.memberIds ?? [])}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-medium transition-all ${
+                      (t.memberIds ?? []).every((id) => form.teamIds.includes(id)) && form.teamIds.length === (t.memberIds ?? []).length
+                        ? 'border-primary bg-primary/10 text-primary'
+                        : 'border-slate-200 text-slate-600 hover:border-primary/40 hover:text-primary'
+                    }`}
+                  >
+                    <span className={`w-2 h-2 rounded-full ${teamColorCls(t.color)}`} />
+                    {t.name}
+                    <span className="text-slate-400">({(t.memberIds ?? []).length})</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div>
             <label className={labelCls}>Équipe assignée</label>
             <div className="space-y-2">
               {employees.filter((e) => e.status === 'actif').map((emp, i) => {
                 const selected = form.teamIds.includes(emp.id)
+                // Conflict: already on another mission that day (exclude current mission if editing)
+                const conflict = missions.some((m) =>
+                  m.teamIds?.includes(emp.id) &&
+                  m.date?.substring(0, 10) === form.date &&
+                  m.status !== 'annule' &&
+                  (!id || m.id !== Number(id))
+                )
                 return (
                   <button
                     key={emp.id}
                     type="button"
                     onClick={() => toggleEmployee(emp.id)}
                     className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left ${
-                      selected ? 'border-primary bg-primary/5' : 'border-slate-100 bg-white hover:border-slate-200'
+                      selected ? 'border-primary bg-primary/5' : conflict ? 'border-amber-200 bg-amber-50/50' : 'border-slate-100 bg-white hover:border-slate-200'
                     }`}
                   >
                     <div className={`w-10 h-10 rounded-full ${EMP_COLORS[i % EMP_COLORS.length]} flex items-center justify-center text-white text-sm font-bold shrink-0`}>
@@ -493,6 +541,7 @@ export default function MissionForm() {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-slate-900 truncate">{emp.firstName} {emp.lastName}</p>
                       <p className="text-xs text-slate-400 capitalize">{emp.role}</p>
+                      {conflict && <p className="text-xs text-amber-600 font-medium mt-0.5">⚠️ Déjà planifié ce jour</p>}
                     </div>
                     <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
                       selected ? 'bg-primary border-primary' : 'border-slate-300'

@@ -1,9 +1,10 @@
 import Sidebar from './Sidebar'
 import TopBar from './TopBar'
+import ToastContainer from '../ui/Toast'
 
 export default function Layout({ children }) {
   return (
-    <div className="min-h-screen bg-slate-50 font-sans">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 font-sans transition-colors">
       <Sidebar />
       <div className="md:ml-60 flex flex-col min-h-screen">
         <TopBar />
@@ -11,6 +12,7 @@ export default function Layout({ children }) {
           {children}
         </main>
       </div>
+      <ToastContainer />
     </div>
   )
 }

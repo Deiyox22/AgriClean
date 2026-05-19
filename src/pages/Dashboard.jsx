@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ClipboardList, Euro, Clock, AlertTriangle, Plus, TrendingUp, Download, X } from 'lucide-react'
+import { ClipboardList, Euro, Clock, AlertTriangle, Plus, TrendingUp, Download, X, Hourglass, Users, Check } from 'lucide-react'
 import { startOfDay, endOfDay, startOfMonth, endOfMonth, subMonths, format, isWithinInterval } from 'date-fns'
 import { fr } from 'date-fns/locale'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
@@ -8,17 +8,70 @@ import { useMissionStore } from '../store/useMissionStore'
 import { useInvoiceStore } from '../store/useInvoiceStore'
 import { useClientStore } from '../store/useClientStore'
 import { useEmployeeStore } from '../store/useEmployeeStore'
+import Modal from '../components/ui/Modal'
 import { usePWAInstall } from '../hooks/usePWAInstall'
 import StatCard from '../components/ui/StatCard'
 import Card from '../components/ui/Card'
 import Badge from '../components/ui/Badge'
-import { formatCurrency, formatRelativeDate, getMissionTypeLabel, getStatusLabel, getStatusBadgeClass } from '../utils/formatters'
+import { formatCurrency, formatRelativeDate, getMissionTypeLabel, getStatusLabel, getStatusBadgeClass, getInitials } from '../utils/formatters'
+import { toast } from '../store/useToastStore'
+
+const EMP_COLORS = ['bg-[#1a4731]','bg-[#d97706]','bg-blue-500','bg-purple-500','bg-teal-500','bg-pink-500']
+
+function QuickAssignModal({ mission, clientName, onClose }) {
+  const employees = useEmployeeStore((s) => s.employees)
+  const update    = useMissionStore((s) => s.update)
+  const [selected, setSelected] = useState([])
+  const [saving,   setSaving]   = useState(false)
+  const active = employees.filter((e) => e.status === 'actif')
+  const toggle = (id) => setSelected((p) => p.includes(id) ? p.filter((x) => x !== id) : [...p, id])
+  const handleSave = async () => {
+    if (!selected.length) return
+    setSaving(true)
+    try {
+      await update(mission.id, { teamIds: selected })
+      toast.success(`Équipe assignée — ${selected.length} employé${selected.length > 1 ? 's' : ''}`)
+      onClose()
+    } finally { setSaving(false) }
+  }
+  return (
+    <Modal open onClose={onClose} title={`Assigner — ${clientName}`} size="sm">
+      <div className="space-y-2 mb-4">
+        {active.map((emp, i) => {
+          const sel = selected.includes(emp.id)
+          return (
+            <button key={emp.id} onClick={() => toggle(emp.id)}
+              className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 text-left transition-all ${sel ? 'border-primary bg-primary/5' : 'border-slate-100 hover:border-slate-200'}`}>
+              <div className={`w-8 h-8 rounded-full ${EMP_COLORS[i % EMP_COLORS.length]} flex items-center justify-center text-white text-xs font-bold shrink-0`}>
+                {getInitials(emp.firstName, emp.lastName)}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-slate-900">{emp.firstName} {emp.lastName}</p>
+                <p className="text-xs text-slate-400 capitalize">{emp.role}</p>
+              </div>
+              <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${sel ? 'bg-primary border-primary' : 'border-slate-300'}`}>
+                {sel && <Check size={11} className="text-white" />}
+              </div>
+            </button>
+          )
+        })}
+      </div>
+      <button onClick={handleSave} disabled={!selected.length || saving}
+        className="w-full py-3 rounded-xl bg-primary text-white text-sm font-semibold hover:bg-primary-light disabled:opacity-40">
+        {saving ? 'Enregistrement…' : selected.length ? `Assigner ${selected.length} employé${selected.length > 1 ? 's' : ''}` : 'Sélectionner des employés'}
+      </button>
+    </Modal>
+  )
+}
 
 export default function Dashboard() {
-  const missions = useMissionStore((s) => s.missions)
-  const invoices = useInvoiceStore((s) => s.invoices)
-  const clients = useClientStore((s) => s.clients)
+  const missions  = useMissionStore((s) => s.missions)
+  const invoices  = useInvoiceStore((s) => s.invoices)
+  const clients   = useClientStore((s) => s.clients)
   const employees = useEmployeeStore((s) => s.employees)
+  const [assignModal, setAssignModal] = useState(null)
+
+  const getEmployee = (id) => employees.find((e) => e.id === id)
   const { isInstallable, install } = usePWAInstall()
   const navigate = useNavigate()
   const [showInstallNote, setShowInstallNote] = useState(true)
@@ -36,6 +89,12 @@ export default function Dashboard() {
   const monthCA = useMemo(() =>
     invoices
       .filter((i) => isWithinInterval(new Date(i.createdAt), { start: startOfMonth(now), end: endOfMonth(now) }))
+      .reduce((sum, i) => sum + (i.lines ?? []).reduce((s, l) => s + (l.total ?? 0), 0), 0),
+    [invoices])
+
+  const pendingInvoicesTotal = useMemo(() =>
+    invoices
+      .filter((i) => i.status === 'emise' || i.status === 'en_attente' || i.status === 'relance1' || i.status === 'relance2')
       .reduce((sum, i) => sum + (i.lines ?? []).reduce((s, l) => s + (l.total ?? 0), 0), 0),
     [invoices])
 
@@ -107,6 +166,14 @@ export default function Dashboard() {
         <StatCard label="Heures équipe" value={`${monthHours}h`} icon={Clock} color="green" />
       </div>
 
+      {/* Row 2 KPIs */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard label="À encaisser" value={formatCurrency(pendingInvoicesTotal)} icon={Hourglass} color="amber" />
+        <StatCard label="Clients actifs" value={clients.filter((c) => c.status === 'actif').length} icon={TrendingUp} color="blue" />
+        <StatCard label="Missions planifiées" value={missions.filter((m) => m.status === 'planifie').length} icon={ClipboardList} color="primary" />
+        <StatCard label="Alertes" value={alerts.unassigned.length + alerts.lateInvoices.length} icon={AlertTriangle} color="red" />
+      </div>
+
       {/* Alerts */}
       {(alerts.unassigned.length > 0 || alerts.lateInvoices.length > 0) && (
         <Card className="p-5">
@@ -119,14 +186,18 @@ export default function Dashboard() {
           </div>
           <div className="space-y-2">
             {alerts.unassigned.map((m) => (
-              <button
-                key={m.id}
-                onClick={() => navigate(`/missions/${m.id}`)}
-                className="w-full flex items-center gap-3 p-3 rounded-xl bg-amber-50 hover:bg-amber-100 transition-colors text-left"
-              >
-                <span className="text-amber-600 text-sm">⚠️</span>
-                <span className="text-sm text-slate-700">Mission sans équipe assignée — {getClientName(m.clientId)} ({formatRelativeDate(m.date)})</span>
-              </button>
+              <div key={m.id} className="flex items-center gap-2 p-3 rounded-xl bg-amber-50">
+                <span className="text-amber-600 text-sm shrink-0">⚠️</span>
+                <span className="text-sm text-slate-700 flex-1 min-w-0 truncate">
+                  {getClientName(m.clientId)} · {formatRelativeDate(m.date)}
+                </span>
+                <button
+                  onClick={() => setAssignModal({ mission: m, clientName: getClientName(m.clientId) })}
+                  className="flex items-center gap-1 px-2.5 py-1.5 bg-primary text-white text-xs font-semibold rounded-lg hover:bg-primary-light transition-colors shrink-0"
+                >
+                  <Users size={11} /> Assigner
+                </button>
+              </div>
             ))}
             {alerts.lateInvoices.map((inv) => (
               <button
@@ -160,6 +231,22 @@ export default function Dashboard() {
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-slate-900 truncate">{getMissionTypeLabel(m.type)}</p>
                     <p className="text-xs text-slate-500 truncate">{getClientName(m.clientId)}</p>
+                    {(m.teamIds?.length ?? 0) > 0 && (
+                      <div className="flex items-center gap-1 mt-1">
+                        {(m.teamIds ?? []).slice(0, 3).map((tid) => {
+                          const emp = getEmployee(tid)
+                          if (!emp) return null
+                          return (
+                            <span key={tid} className="text-[10px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded-full">
+                              {emp.firstName[0]}{emp.lastName[0]}
+                            </span>
+                          )
+                        })}
+                        {(m.teamIds?.length ?? 0) > 3 && (
+                          <span className="text-[10px] text-slate-400">+{m.teamIds.length - 3}</span>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <Badge className={getStatusBadgeClass(m.status)}>{getStatusLabel(m.status)}</Badge>
                 </button>
@@ -190,6 +277,14 @@ export default function Dashboard() {
           </ResponsiveContainer>
         </Card>
       </div>
+
+      {assignModal && (
+        <QuickAssignModal
+          mission={assignModal.mission}
+          clientName={assignModal.clientName}
+          onClose={() => setAssignModal(null)}
+        />
+      )}
     </div>
   )
 }

@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { db } from '../db/db'
+import { supabase, toDb, fromDb } from '../lib/supabase'
 
 export const useClientStore = create((set, get) => ({
   clients: [],
@@ -8,27 +8,35 @@ export const useClientStore = create((set, get) => ({
   load: async () => {
     set({ loading: true })
     try {
-      const clients = await db.clients.orderBy('name').toArray()
-      set({ clients })
+      const { data, error } = await supabase.from('clients').select('*').order('name')
+      if (error) throw error
+      set({ clients: (data || []).map(fromDb) })
     } finally {
       set({ loading: false })
     }
   },
 
   add: async (client) => {
-    const id = await db.clients.add({ ...client, createdAt: new Date().toISOString() })
-    const newClient = await db.clients.get(id)
+    const { data, error } = await supabase
+      .from('clients')
+      .insert(toDb({ ...client, createdAt: new Date().toISOString() }))
+      .select()
+      .single()
+    if (error) throw error
+    const newClient = fromDb(data)
     set((s) => ({ clients: [...s.clients, newClient].sort((a, b) => a.name.localeCompare(b.name)) }))
-    return id
+    return newClient.id
   },
 
   update: async (id, changes) => {
-    await db.clients.update(id, changes)
+    const { error } = await supabase.from('clients').update(toDb(changes)).eq('id', id)
+    if (error) throw error
     set((s) => ({ clients: s.clients.map((c) => (c.id === id ? { ...c, ...changes } : c)) }))
   },
 
   remove: async (id) => {
-    await db.clients.delete(id)
+    const { error } = await supabase.from('clients').delete().eq('id', id)
+    if (error) throw error
     set((s) => ({ clients: s.clients.filter((c) => c.id !== id) }))
   },
 

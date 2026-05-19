@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react'
-import { LogOut, FileText, FileCheck, Download, Mail } from 'lucide-react'
+import { useState, useEffect, useMemo } from 'react'
+import { LogOut, FileText, FileCheck, Download, Mail, Search } from 'lucide-react'
 import PublicLayout from '../../components/layout/PublicLayout'
 import Badge from '../../components/ui/Badge'
 import Card from '../../components/ui/Card'
 import { useAuthStore } from '../../store/useAuthStore'
-import { db } from '../../db/db'
+import { supabase, fromDb } from '../../lib/supabase'
 import { formatCurrency, formatDate, getStatusLabel, getStatusBadgeClass } from '../../utils/formatters'
 import { generateInvoicePDF } from '../../utils/pdf'
 
@@ -76,21 +76,33 @@ function ClientDashboard({ clientId, clientName }) {
   const [quotes, setQuotes] = useState([])
   const [client, setClient] = useState(null)
   const [settings, setSettings] = useState(null)
-  const [tab, setTab] = useState('factures')
+  const [tab,         setTab]         = useState('factures')
+  const [invSearch,   setInvSearch]   = useState('')
+  const [invStatus,   setInvStatus]   = useState('all')
   const logoutClient = useAuthStore((s) => s.logoutClient)
+
+  const filteredInvoices = useMemo(() => {
+    let list = invoices
+    if (invStatus !== 'all') list = list.filter((i) => i.status === invStatus)
+    if (invSearch.trim()) {
+      const q = invSearch.toLowerCase()
+      list = list.filter((i) => (i.number ?? '').toLowerCase().includes(q))
+    }
+    return list
+  }, [invoices, invStatus, invSearch])
 
   useEffect(() => {
     const load = async () => {
-      const [invs, qts, cls, sts] = await Promise.all([
-        db.invoices.where('clientId').equals(clientId).reverse().sortBy('createdAt'),
-        db.quotes.where('clientId').equals(clientId).reverse().sortBy('createdAt'),
-        db.clients.get(clientId),
-        db.settings.toArray(),
+      const [invRes, qtRes, clRes, stRes] = await Promise.all([
+        supabase.from('invoices').select('*').eq('client_id', clientId).order('created_at', { ascending: false }),
+        supabase.from('quotes').select('*').eq('client_id', clientId).order('created_at', { ascending: false }),
+        supabase.from('clients').select('*').eq('id', clientId).maybeSingle(),
+        supabase.from('settings').select('*').limit(1).maybeSingle(),
       ])
-      setInvoices(invs)
-      setQuotes(qts)
-      setClient(cls)
-      setSettings(sts[0])
+      setInvoices((invRes.data || []).map(fromDb))
+      setQuotes((qtRes.data || []).map(fromDb))
+      setClient(clRes.data ? fromDb(clRes.data) : null)
+      setSettings(stRes.data ? fromDb(stRes.data) : null)
     }
     load()
   }, [clientId])
@@ -152,13 +164,39 @@ function ClientDashboard({ clientId, clientName }) {
       {/* Invoices */}
       {tab === 'factures' && (
         <div className="space-y-3">
-          {invoices.length === 0 ? (
+          {/* Filters */}
+          {invoices.length > 0 && (
+            <div className="flex gap-2 flex-wrap">
+              <div className="relative flex-1 min-w-[160px]">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="N° facture…"
+                  value={invSearch}
+                  onChange={(e) => setInvSearch(e.target.value)}
+                  className="w-full pl-8 pr-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                />
+              </div>
+              <select
+                value={invStatus}
+                onChange={(e) => setInvStatus(e.target.value)}
+                className="px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-primary/30 text-slate-600"
+              >
+                <option value="all">Tous statuts</option>
+                <option value="emise">Émise</option>
+                <option value="en_attente">En attente</option>
+                <option value="payee">Payée</option>
+              </select>
+            </div>
+          )}
+
+          {filteredInvoices.length === 0 ? (
             <div className="text-center py-12 text-slate-400">
               <FileText size={36} className="mx-auto mb-3 opacity-30" />
-              <p>Aucune facture pour le moment</p>
+              <p>{invoices.length === 0 ? 'Aucune facture pour le moment' : 'Aucun résultat'}</p>
             </div>
           ) : (
-            invoices.map((inv) => (
+            filteredInvoices.map((inv) => (
               <div key={inv.id} className="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm">
                 <div className="flex items-start justify-between gap-3">
                   <div>

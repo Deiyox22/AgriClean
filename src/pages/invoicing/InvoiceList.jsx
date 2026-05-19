@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Mail, ChevronRight, AlertTriangle, Plus, Euro, FileCheck } from 'lucide-react'
+import { Mail, ChevronRight, AlertTriangle, Plus, Euro, FileCheck, Search } from 'lucide-react'
 import { useInvoiceStore } from '../../store/useInvoiceStore'
 import { useQuoteStore } from '../../store/useQuoteStore'
 import { useClientStore } from '../../store/useClientStore'
@@ -12,7 +12,7 @@ import Modal from '../../components/ui/Modal'
 import EmptyState from '../../components/ui/EmptyState'
 import LineItemsEditor from '../../components/ui/LineItemsEditor'
 import { formatCurrency, formatDate, getStatusLabel, getStatusBadgeClass } from '../../utils/formatters'
-import { startOfMonth, endOfMonth, isWithinInterval, isPast, addDays, format } from 'date-fns'
+import { startOfMonth, endOfMonth, subMonths, startOfYear, isWithinInterval, isPast, addDays, format } from 'date-fns'
 
 const INVOICE_STATUS_TABS = [
   { key: 'all', label: 'Toutes' },
@@ -204,9 +204,11 @@ export default function InvoiceList() {
     const tab = searchParams.get('tab')
     if (tab === 'devis' || tab === 'factures') setMainTab(tab)
   }, [searchParams])
-  const [invoiceTab, setInvoiceTab] = useState('all')
-  const [quoteTab, setQuoteTab] = useState('all')
-  const [modal, setModal] = useState(null)
+  const [invoiceTab,    setInvoiceTab]    = useState('all')
+  const [quoteTab,      setQuoteTab]      = useState('all')
+  const [search,        setSearch]        = useState('')
+  const [periodFilter,  setPeriodFilter]  = useState('all')
+  const [modal,         setModal]         = useState(null)
 
   const getHT = (doc) => (doc.lines ?? []).reduce((sum, l) => sum + (l.total ?? 0), 0)
   const getTTC = (doc) => getHT(doc) * (1 + (doc.tax ?? 20) / 100)
@@ -224,13 +226,40 @@ export default function InvoiceList() {
     return { emis, encaisse, retard, devisEnCours }
   }, [invoices, quotes])
 
-  const filteredInvoices = useMemo(() =>
-    invoiceTab === 'all' ? invoices : invoices.filter((i) => i.status === invoiceTab),
-    [invoices, invoiceTab])
+  const getPeriodRange = () => {
+    const n = new Date()
+    if (periodFilter === 'this_month')   return { start: startOfMonth(n), end: endOfMonth(n) }
+    if (periodFilter === 'last_month')   { const m = subMonths(n, 1); return { start: startOfMonth(m), end: endOfMonth(m) } }
+    if (periodFilter === 'last_3months') return { start: startOfMonth(subMonths(n, 2)), end: endOfMonth(n) }
+    if (periodFilter === 'this_year')    return { start: startOfYear(n), end: endOfMonth(n) }
+    return null
+  }
 
-  const filteredQuotes = useMemo(() =>
-    quoteTab === 'all' ? quotes : quotes.filter((q) => q.status === quoteTab),
-    [quotes, quoteTab])
+  const filteredInvoices = useMemo(() => {
+    let list = invoiceTab === 'all' ? invoices : invoices.filter((i) => i.status === invoiceTab)
+    const range = getPeriodRange()
+    if (range) list = list.filter((i) => i.createdAt && isWithinInterval(new Date(i.createdAt), range))
+    if (search.trim()) {
+      const q = search.toLowerCase()
+      list = list.filter((i) => {
+        const c = getClient(i.clientId)
+        return c?.name.toLowerCase().includes(q) || (i.number ?? '').toLowerCase().includes(q)
+      })
+    }
+    return list
+  }, [invoices, invoiceTab, search, periodFilter, getClient])
+
+  const filteredQuotes = useMemo(() => {
+    let list = quoteTab === 'all' ? quotes : quotes.filter((q) => q.status === quoteTab)
+    if (search.trim()) {
+      const q = search.toLowerCase()
+      list = list.filter((qu) => {
+        const c = getClient(qu.clientId)
+        return c?.name.toLowerCase().includes(q) || (qu.number ?? '').toLowerCase().includes(q)
+      })
+    }
+    return list
+  }, [quotes, quoteTab, search, getClient])
 
   const isLate = (inv) => inv.status === 'en_attente' && inv.dueDate && isPast(new Date(inv.dueDate))
 
@@ -263,6 +292,31 @@ export default function InvoiceList() {
         <StatCard label="Encaissé" value={formatCurrency(kpis.encaisse)} icon={Euro} color="green" />
         <StatCard label="En retard" value={formatCurrency(kpis.retard)} icon={AlertTriangle} color="red" />
         <StatCard label="Devis en cours" value={formatCurrency(kpis.devisEnCours)} icon={FileCheck} color="blue" />
+      </div>
+
+      {/* Search + period */}
+      <div className="flex gap-2">
+        <div className="relative flex-1">
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            placeholder="Rechercher par client ou numéro…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+          />
+        </div>
+        <select
+          value={periodFilter}
+          onChange={(e) => setPeriodFilter(e.target.value)}
+          className="px-3 py-2.5 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-primary/30 text-slate-600 shrink-0"
+        >
+          <option value="all">Toutes les dates</option>
+          <option value="this_month">Ce mois</option>
+          <option value="last_month">Mois dernier</option>
+          <option value="last_3months">3 derniers mois</option>
+          <option value="this_year">Cette année</option>
+        </select>
       </div>
 
       {/* Main tabs + button */}

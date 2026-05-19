@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { db } from '../db/db'
+import { supabase, toDb, fromDb } from '../lib/supabase'
 
 export const useEmployeeStore = create((set, get) => ({
   employees: [],
@@ -8,27 +8,35 @@ export const useEmployeeStore = create((set, get) => ({
   load: async () => {
     set({ loading: true })
     try {
-      const employees = await db.employees.toArray()
-      set({ employees })
+      const { data, error } = await supabase.from('employees').select('*')
+      if (error) throw error
+      set({ employees: (data || []).map(fromDb) })
     } finally {
       set({ loading: false })
     }
   },
 
   add: async (employee) => {
-    const id = await db.employees.add(employee)
-    const newEmployee = await db.employees.get(id)
+    const { data, error } = await supabase
+      .from('employees')
+      .insert(toDb(employee))
+      .select()
+      .single()
+    if (error) throw error
+    const newEmployee = fromDb(data)
     set((s) => ({ employees: [...s.employees, newEmployee] }))
-    return id
+    return newEmployee.id
   },
 
   update: async (id, changes) => {
-    await db.employees.update(id, changes)
+    const { error } = await supabase.from('employees').update(toDb(changes)).eq('id', id)
+    if (error) throw error
     set((s) => ({ employees: s.employees.map((e) => (e.id === id ? { ...e, ...changes } : e)) }))
   },
 
   remove: async (id) => {
-    await db.employees.delete(id)
+    const { error } = await supabase.from('employees').delete().eq('id', id)
+    if (error) throw error
     set((s) => ({ employees: s.employees.filter((e) => e.id !== id) }))
   },
 

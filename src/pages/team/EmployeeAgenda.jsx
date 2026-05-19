@@ -131,8 +131,7 @@ export default function EmployeeAgenda() {
         const d = new Date(m.date)
         return isFuture(d) && !isToday(d) && !isTomorrow(d) && isWithinInterval(d, { start: now, end: addDays(now, 14) })
       })
-      .sort((a, b) => new Date(a.date) - new Date(b.date))
-      .slice(0, 5),
+      .sort((a, b) => new Date(a.date) - new Date(b.date)),
     [empMissions]
   )
 

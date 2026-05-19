@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { addDays, addWeeks } from 'date-fns'
-import { db } from '../db/db'
+import { supabase, toDb, fromDb } from '../lib/supabase'
 
 function nextOccurrenceDate(date, recurrence) {
   const d = new Date(date)
@@ -20,34 +20,41 @@ export const useMissionStore = create((set, get) => ({
   load: async () => {
     set({ loading: true })
     try {
-      const missions = await db.missions.orderBy('date').reverse().toArray()
-      set({ missions })
+      const { data, error } = await supabase.from('missions').select('*').order('date', { ascending: false })
+      if (error) throw error
+      set({ missions: (data || []).map(fromDb) })
     } finally {
       set({ loading: false })
     }
   },
 
   add: async (mission) => {
-    const id = await db.missions.add({ ...mission, createdAt: new Date().toISOString() })
-    const newMission = await db.missions.get(id)
+    const { data, error } = await supabase
+      .from('missions')
+      .insert(toDb({ ...mission, createdAt: new Date().toISOString() }))
+      .select()
+      .single()
+    if (error) throw error
+    const newMission = fromDb(data)
     set((s) => ({ missions: [newMission, ...s.missions] }))
-    return id
+    return newMission.id
   },
 
   update: async (id, changes) => {
-    await db.missions.update(id, changes)
+    const { error } = await supabase.from('missions').update(toDb(changes)).eq('id', id)
+    if (error) throw error
     set((s) => ({ missions: s.missions.map((m) => (m.id === id ? { ...m, ...changes } : m)) }))
   },
 
   remove: async (id) => {
-    await db.missions.delete(id)
+    const { error } = await supabase.from('missions').delete().eq('id', id)
+    if (error) throw error
     set((s) => ({ missions: s.missions.filter((m) => m.id !== id) }))
   },
 
   getById: (id) => get().missions.find((m) => m.id === id),
   getByClient: (clientId) => get().missions.filter((m) => m.clientId === clientId),
 
-  // Crée automatiquement la prochaine occurrence d'une mission récurrente
   createNextOccurrence: async (mission) => {
     if (!mission.recurrence || mission.recurrence === 'aucune') return null
     const nextDate = nextOccurrenceDate(mission.date, mission.recurrence)

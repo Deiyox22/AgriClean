@@ -2,31 +2,49 @@ import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { formatDate, formatCurrency } from './formatters'
 
+const PRIMARY = [26, 71, 49]
+
+function addHeader(doc, company) {
+  doc.setFillColor(...PRIMARY)
+  doc.rect(0, 0, 210, 40, 'F')
+
+  if (company.logo) {
+    try {
+      // Detect format from base64 prefix
+      const fmt = company.logo.startsWith('data:image/png') ? 'PNG'
+        : company.logo.startsWith('data:image/svg') ? 'SVG'
+        : 'JPEG'
+      doc.addImage(company.logo, fmt, 10, 4, 32, 32)
+    } catch {
+      // Fallback to text if image fails
+      doc.setTextColor(255, 255, 255)
+      doc.setFontSize(22)
+      doc.setFont('helvetica', 'bold')
+      doc.text(company.name ?? 'AgriClean', 14, 18)
+    }
+  } else {
+    doc.setTextColor(255, 255, 255)
+    doc.setFontSize(22)
+    doc.setFont('helvetica', 'bold')
+    doc.text(company.name ?? 'AgriClean', 14, 18)
+  }
+
+  const textX = company.logo ? 46 : 14
+  doc.setTextColor(255, 255, 255)
+  doc.setFontSize(9)
+  doc.setFont('helvetica', 'normal')
+  doc.text(company.name ?? '', textX, company.logo ? 14 : 26)
+  doc.text(company.address ?? '', textX, company.logo ? 20 : 31)
+  doc.text(`Tél : ${company.phone ?? ''}  |  ${company.email ?? ''}`, textX, company.logo ? 26 : 36)
+  if (company.siret) doc.text(`SIRET : ${company.siret}`, 140, company.logo ? 20 : 26)
+}
+
 export function generateInvoicePDF(invoice, client, settings) {
   const doc = new jsPDF()
   const company = settings?.company ?? {}
-  const primaryColor = [26, 71, 49]
 
-  // Header background
-  doc.setFillColor(...primaryColor)
-  doc.rect(0, 0, 210, 40, 'F')
+  addHeader(doc, company)
 
-  doc.setTextColor(255, 255, 255)
-  doc.setFontSize(22)
-  doc.setFont('helvetica', 'bold')
-  doc.text('AgriClean', 14, 18)
-
-  doc.setFontSize(9)
-  doc.setFont('helvetica', 'normal')
-  doc.text(company.name ?? '', 14, 26)
-  doc.text(company.address ?? '', 14, 31)
-  doc.text(`Tél : ${company.phone ?? ''}  |  ${company.email ?? ''}`, 14, 36)
-
-  if (company.siret) {
-    doc.text(`SIRET : ${company.siret}`, 140, 26)
-  }
-
-  // Invoice title
   doc.setTextColor(0, 0, 0)
   doc.setFontSize(18)
   doc.setFont('helvetica', 'bold')
@@ -38,7 +56,6 @@ export function generateInvoicePDF(invoice, client, settings) {
   doc.text(`Date : ${formatDate(invoice.createdAt)}`, 14, 70)
   doc.text(`Échéance : ${formatDate(invoice.dueDate)}`, 14, 76)
 
-  // Client block
   doc.setFillColor(248, 250, 252)
   doc.rect(120, 50, 76, 38, 'F')
   doc.setFontSize(9)
@@ -53,19 +70,12 @@ export function generateInvoicePDF(invoice, client, settings) {
     doc.text(`${addr.zip ?? ''} ${addr.city ?? ''}`, 124, 83)
   }
 
-  // Lines table
-  const rows = (invoice.lines ?? []).map((l) => [
-    l.description,
-    l.quantity,
-    formatCurrency(l.unitPrice),
-    formatCurrency(l.total),
-  ])
-
+  const rows = (invoice.lines ?? []).map((l) => [l.description, l.quantity, formatCurrency(l.unitPrice), formatCurrency(l.total)])
   autoTable(doc, {
     startY: 100,
     head: [['Description', 'Qté', 'Prix unitaire HT', 'Total HT']],
     body: rows,
-    headStyles: { fillColor: primaryColor, textColor: 255, fontStyle: 'bold' },
+    headStyles: { fillColor: PRIMARY, textColor: 255, fontStyle: 'bold' },
     alternateRowStyles: { fillColor: [248, 250, 252] },
     styles: { fontSize: 10 },
     columnStyles: { 0: { cellWidth: 90 }, 1: { halign: 'center' }, 2: { halign: 'right' }, 3: { halign: 'right' } },
@@ -75,12 +85,13 @@ export function generateInvoicePDF(invoice, client, settings) {
   const totalHT = (invoice.lines ?? []).reduce((sum, l) => sum + (l.total ?? 0), 0)
   const taxAmount = totalHT * ((invoice.tax ?? 20) / 100)
   const totalTTC = totalHT + taxAmount
+  const rightCol = 196
 
   doc.setDrawColor(226, 232, 240)
   doc.line(120, finalY, 196, finalY)
-
-  const rightCol = 196
   doc.setFontSize(10)
+  doc.setFont('helvetica', 'normal')
+  doc.setTextColor(0, 0, 0)
   doc.text('Total HT :', 130, finalY + 8)
   doc.text(formatCurrency(totalHT), rightCol, finalY + 8, { align: 'right' })
   doc.text(`TVA (${invoice.tax ?? 20}%) :`, 130, finalY + 15)
@@ -88,13 +99,12 @@ export function generateInvoicePDF(invoice, client, settings) {
 
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(12)
-  doc.setFillColor(...primaryColor)
+  doc.setFillColor(...PRIMARY)
   doc.rect(120, finalY + 18, 76, 10, 'F')
   doc.setTextColor(255, 255, 255)
   doc.text('Total TTC :', 130, finalY + 25)
   doc.text(formatCurrency(totalTTC), rightCol, finalY + 25, { align: 'right' })
 
-  // Footer
   doc.setTextColor(100, 116, 139)
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(8)

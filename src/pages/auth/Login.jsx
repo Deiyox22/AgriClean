@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { Leaf, Eye, EyeOff, ArrowLeft, ShieldCheck, Users } from 'lucide-react'
 import { useAuthStore } from '../../store/useAuthStore'
-import { db } from '../../db/db'
+import { supabase, fromDb } from '../../lib/supabase'
 
 const inputCls = 'w-full px-4 py-3 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors'
 
@@ -73,7 +73,8 @@ function EmployeeForm() {
   const navigate = useNavigate()
 
   useEffect(() => {
-    db.employees.filter((e) => e.status === 'actif' && e.pin).toArray().then(setEmployees)
+    supabase.from('employees').select('*').eq('status', 'actif')
+      .then(({ data }) => setEmployees((data || []).filter(e => e.pin).map(fromDb)))
   }, [])
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))

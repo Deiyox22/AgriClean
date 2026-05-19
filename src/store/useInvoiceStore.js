@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { differenceInDays } from 'date-fns'
-import { db } from '../db/db'
+import { supabase, toDb, fromDb } from '../lib/supabase'
 
 export const useInvoiceStore = create((set, get) => ({
   invoices: [],
@@ -10,40 +10,47 @@ export const useInvoiceStore = create((set, get) => ({
   load: async () => {
     set({ loading: true })
     try {
-      const invoices = await db.invoices.orderBy('createdAt').reverse().toArray()
-      set({ invoices })
+      const { data, error } = await supabase.from('invoices').select('*').order('created_at', { ascending: false })
+      if (error) throw error
+      set({ invoices: (data || []).map(fromDb) })
     } finally {
       set({ loading: false })
     }
   },
 
   add: async (invoice) => {
-    const count = await db.invoices.count()
+    const { count } = await supabase.from('invoices').select('id', { count: 'exact', head: true })
     const year = new Date().getFullYear()
-    const number = `FAC-${year}-${String(count + 1).padStart(3, '0')}`
-    const id = await db.invoices.add({ ...invoice, number, createdAt: new Date().toISOString() })
-    const newInvoice = await db.invoices.get(id)
+    const number = `FAC-${year}-${String((count || 0) + 1).padStart(3, '0')}`
+    const { data, error } = await supabase
+      .from('invoices')
+      .insert(toDb({ ...invoice, number, createdAt: new Date().toISOString() }))
+      .select()
+      .single()
+    if (error) throw error
+    const newInvoice = fromDb(data)
     set((s) => ({ invoices: [newInvoice, ...s.invoices] }))
-    return id
+    return newInvoice.id
   },
 
   update: async (id, changes) => {
-    await db.invoices.update(id, changes)
+    const { error } = await supabase.from('invoices').update(toDb(changes)).eq('id', id)
+    if (error) throw error
     set((s) => ({ invoices: s.invoices.map((i) => (i.id === id ? { ...i, ...changes } : i)) }))
   },
 
   remove: async (id) => {
-    await db.invoices.delete(id)
+    const { error } = await supabase.from('invoices').delete().eq('id', id)
+    if (error) throw error
     set((s) => ({ invoices: s.invoices.filter((i) => i.id !== id) }))
   },
 
   getById: (id) => get().invoices.find((i) => i.id === id),
   getByClient: (clientId) => get().invoices.filter((i) => i.clientId === clientId),
 
-  // Escalade automatique des factures en retard
   escalateOverdue: async () => {
     const now = new Date()
-    const invoices = await db.invoices.toArray()
+    const invoices = get().invoices
     const skipStatuses = new Set(['payee', 'litige', 'relance2', 'annule'])
     let count = 0
 
@@ -58,14 +65,14 @@ export const useInvoiceStore = create((set, get) => ({
       else if (daysLate > 15 && inv.status === 'relance1') newStatus = 'relance2'
 
       if (newStatus) {
-        await db.invoices.update(inv.id, { status: newStatus })
+        await supabase.from('invoices').update({ status: newStatus }).eq('id', inv.id)
         count++
       }
     }
 
     if (count > 0) {
-      const updated = await db.invoices.orderBy('createdAt').reverse().toArray()
-      set({ invoices: updated, escalatedCount: count })
+      await get().load()
+      set({ escalatedCount: count })
     }
 
     return count

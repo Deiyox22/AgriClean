@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Trash2, Pencil, Phone, Mail, CalendarDays, FileDown } from 'lucide-react'
+import { ArrowLeft, Trash2, Pencil, Phone, Mail, CalendarDays, FileDown, Plus, X } from 'lucide-react'
 import { useEmployeeStore } from '../../store/useEmployeeStore'
 import { useMissionStore } from '../../store/useMissionStore'
 import { useClientStore } from '../../store/useClientStore'
@@ -24,6 +24,7 @@ export default function EmployeeDetail() {
   const missions = useMissionStore((s) => s.missions)
   const getClient = useClientStore((s) => s.getById)
   const [editing, setEditing] = useState(false)
+  const [showAllMissions, setShowAllMissions] = useState(false)
 
   const emp = getById(Number(id))
 
@@ -147,24 +148,141 @@ export default function EmployeeDetail() {
           <EmptyState title="Aucune mission assignée" />
         ) : (
           <div className="space-y-2">
-            {empMissions.slice(0, 10).map((m) => (
+            {(showAllMissions ? empMissions : empMissions.slice(0, 10)).map((m) => (
               <Card key={m.id} onClick={() => navigate(`/missions/${m.id}`)} className="p-3">
                 <div className="flex items-center gap-3">
                   <div className="flex-1">
                     <p className="text-sm font-medium text-slate-900">{getMissionTypeLabel(m.type)}</p>
-                    <p className="text-xs text-slate-500">{getClient(m.clientId)?.name} · {formatDate(m.date)}</p>
+                    <p className="text-xs text-slate-500">{getClient(m.clientId)?.name ?? '—'} · {formatDate(m.date)}</p>
                   </div>
                   <Badge className={getStatusBadgeClass(m.status)}>{getStatusLabel(m.status)}</Badge>
                 </div>
               </Card>
             ))}
+            {empMissions.length > 10 && (
+              <button
+                onClick={() => setShowAllMissions((v) => !v)}
+                className="w-full py-2.5 text-sm text-primary font-medium hover:bg-primary/5 rounded-xl transition-colors"
+              >
+                {showAllMissions ? 'Réduire' : `Voir les ${empMissions.length - 10} autres missions`}
+              </button>
+            )}
           </div>
         )}
       </div>
 
+      {/* Absences */}
+      <AbsencesSection emp={emp} onUpdate={(absences) => update(emp.id, { absences })} />
+
       <Modal open={editing} onClose={() => setEditing(false)} title={`Modifier — ${emp.firstName} ${emp.lastName}`} size="lg">
         <EmployeeForm initial={emp} onSave={handleSave} onClose={() => setEditing(false)} />
       </Modal>
+    </div>
+  )
+}
+
+const ABSENCE_TYPES = [
+  { value: 'conge',      label: 'Congé payé',   color: 'bg-blue-100 text-blue-700'   },
+  { value: 'maladie',   label: 'Maladie',       color: 'bg-red-100 text-red-700'     },
+  { value: 'formation', label: 'Formation',     color: 'bg-purple-100 text-purple-700'},
+  { value: 'autre',     label: 'Autre',         color: 'bg-slate-100 text-slate-600' },
+]
+
+function AbsencesSection({ emp, onUpdate }) {
+  const absences = emp.absences ?? []
+  const [adding, setAdding] = useState(false)
+  const [form, setForm] = useState({ type: 'conge', start: '', end: '', note: '' })
+  const [saving, setSaving] = useState(false)
+  const inputCls = 'w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary'
+
+  const handleAdd = async () => {
+    if (!form.start || !form.end) return
+    setSaving(true)
+    try {
+      await onUpdate([...absences, { id: Date.now(), ...form }])
+      setForm({ type: 'conge', start: '', end: '', note: '' })
+      setAdding(false)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDelete = async (id) => {
+    await onUpdate(absences.filter((a) => a.id !== id))
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="font-semibold text-slate-900">Absences & Congés ({absences.length})</h2>
+        {!adding && (
+          <button
+            onClick={() => setAdding(true)}
+            className="flex items-center gap-1.5 text-xs text-primary font-semibold hover:underline"
+          >
+            <Plus size={13} /> Ajouter
+          </button>
+        )}
+      </div>
+
+      {adding && (
+        <Card className="p-4 mb-3 border-primary/30 space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Type</label>
+              <select className={inputCls} value={form.type} onChange={(e) => setForm((f) => ({ ...f, type: e.target.value }))}>
+                {ABSENCE_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Début</label>
+              <input type="date" className={inputCls} value={form.start} onChange={(e) => setForm((f) => ({ ...f, start: e.target.value }))} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Fin</label>
+              <input type="date" className={inputCls} value={form.end} onChange={(e) => setForm((f) => ({ ...f, end: e.target.value }))} />
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Note (optionnel)</label>
+            <input className={inputCls} value={form.note} onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))} placeholder="Raison, précisions…" />
+          </div>
+          <div className="flex gap-2">
+            <button onClick={() => setAdding(false)} className="flex-1 py-2 rounded-xl border border-slate-200 text-sm text-slate-600 hover:bg-slate-50">Annuler</button>
+            <button onClick={handleAdd} disabled={!form.start || !form.end || saving} className="flex-1 py-2 rounded-xl bg-primary text-white text-sm font-medium hover:bg-primary-light disabled:opacity-40">
+              {saving ? 'Enregistrement…' : 'Ajouter'}
+            </button>
+          </div>
+        </Card>
+      )}
+
+      {absences.length === 0 && !adding ? (
+        <p className="text-sm text-slate-400 py-2">Aucune absence enregistrée.</p>
+      ) : (
+        <div className="space-y-2">
+          {[...absences].sort((a, b) => new Date(b.start) - new Date(a.start)).map((ab) => {
+            const cfg = ABSENCE_TYPES.find((t) => t.value === ab.type) ?? ABSENCE_TYPES[3]
+            const start = new Date(ab.start)
+            const end   = new Date(ab.end)
+            const days  = Math.round((end - start) / 86400000) + 1
+            return (
+              <div key={ab.id} className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl">
+                <span className={`text-xs font-semibold px-2 py-0.5 rounded-full shrink-0 ${cfg.color}`}>{cfg.label}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-slate-900 font-medium">
+                    {format(start, 'dd/MM/yyyy')} → {format(end, 'dd/MM/yyyy')}
+                    <span className="text-xs text-slate-400 ml-2">{days}j</span>
+                  </p>
+                  {ab.note && <p className="text-xs text-slate-500 truncate">{ab.note}</p>}
+                </div>
+                <button onClick={() => handleDelete(ab.id)} className="p-1.5 text-slate-300 hover:text-red-400 rounded-lg transition-colors" aria-label="Supprimer">
+                  <X size={14} />
+                </button>
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }

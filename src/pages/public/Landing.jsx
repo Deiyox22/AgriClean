@@ -2,7 +2,7 @@ import { useState, useRef, useMemo, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { CheckCircle, ArrowRight, Mail, Phone, MapPin, Send, Download, Users, Building2, Calculator, FileSearch, ArrowUpRight } from 'lucide-react'
 import PublicLayout from '../../components/layout/PublicLayout'
-import { db } from '../../db/db'
+import { supabase, toDb } from '../../lib/supabase'
 import { usePWAInstall } from '../../hooks/usePWAInstall'
 import { useSettingsStore } from '../../store/useSettingsStore'
 import { formatCurrency } from '../../utils/formatters'
@@ -113,7 +113,7 @@ function ContactForm({ simulationData }) {
         `${form.message || 'Aucun message.'}`
       )
 
-      await db.contacts.add({ ...form, createdAt: new Date().toISOString() })
+      await supabase.from('contacts').insert(toDb({ ...form, createdAt: new Date().toISOString() }))
       window.location.href = `mailto:contact@agriclean.fr?subject=${subject}&body=${body}`
       setSent(true)
     } finally {

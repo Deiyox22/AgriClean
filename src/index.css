@@ -11,6 +11,27 @@
   * {
     box-sizing: border-box;
   }
+
+  /* ── Dark mode global overrides ────────────────────────────────────────── */
+  .dark body {
+    @apply bg-slate-900 text-slate-100;
+  }
+
+  .dark input,
+  .dark select,
+  .dark textarea {
+    @apply bg-slate-800 border-slate-600 text-slate-100 placeholder:text-slate-500;
+  }
+
+  .dark input[type="date"],
+  .dark input[type="time"],
+  .dark input[type="number"] {
+    color-scheme: dark;
+  }
+
+  .dark input[type="checkbox"] {
+    @apply bg-slate-800 border-slate-600;
+  }
 }
 
 @layer utilities {

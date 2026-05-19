@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { db } from '../db/db'
+import { supabase, toDb, fromDb } from '../lib/supabase'
 
 const defaults = {
   company: { name: 'AgriClean SARL', siret: '', address: '', phone: '', email: '', rib: '' },
@@ -7,6 +7,8 @@ const defaults = {
   legalMentions: 'Paiement à 30 jours.',
   invoicePrefix: 'FAC',
   theme: 'light',
+  adminEmail: 'admin@agriclean.fr',
+  adminPassword: 'agriclean2025',
   travelSettings: {
     mode: 'km',
     ratePerKm: 0.68,
@@ -24,8 +26,8 @@ export const useSettingsStore = create((set, get) => ({
   load: async () => {
     set({ loading: true })
     try {
-      const all = await db.settings.toArray()
-      if (all.length > 0) set({ settings: { ...defaults, ...all[0] } })
+      const { data } = await supabase.from('settings').select('*').limit(1).maybeSingle()
+      if (data) set({ settings: { ...defaults, ...fromDb(data) } })
     } finally {
       set({ loading: false })
     }
@@ -34,11 +36,12 @@ export const useSettingsStore = create((set, get) => ({
   save: async (changes) => {
     const current = get().settings
     const updated = { ...current, ...changes }
-    const all = await db.settings.toArray()
-    if (all.length > 0) {
-      await db.settings.update(all[0].id, updated)
+    const dbData = toDb(updated)
+    if (current.id) {
+      await supabase.from('settings').update(dbData).eq('id', current.id)
     } else {
-      await db.settings.add(updated)
+      const { data } = await supabase.from('settings').insert(dbData).select().single()
+      if (data) updated.id = data.id
     }
     set({ settings: updated })
   },

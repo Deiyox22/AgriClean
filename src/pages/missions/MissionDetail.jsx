@@ -2,7 +2,7 @@ import { useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, Pencil, Trash2, AlertTriangle, CheckCircle,
-  FileText, Camera, X, RefreshCw, Image,
+  FileText, Camera, X, RefreshCw, Image, Plus,
 } from 'lucide-react'
 import { useMissionStore } from '../../store/useMissionStore'
 import { useClientStore } from '../../store/useClientStore'
@@ -58,11 +58,13 @@ export default function MissionDetail() {
   const getEmployee        = useEmployeeStore((s) => s.getById)
   const getVehicle         = useVehicleStore((s) => s.getVehicleById)
   const addInvoice         = useInvoiceStore((s) => s.add)
+  const invoices           = useInvoiceStore((s) => s.invoices)
   const settings           = useSettingsStore((s) => s.settings)
 
   const [showReport, setShowReport]   = useState(false)
   const [report, setReport]           = useState({ realDuration: 0, notes: '', incidents: [], consumables: [] })
   const [newIncident, setNewIncident] = useState({ text: '', severity: 'info' })
+  const [newCheckItem, setNewCheckItem] = useState('')
   const [invoiceModal, setInvoiceModal] = useState(false)
   const [invoiceLines, setInvoiceLines] = useState([])
   const [successMsg, setSuccessMsg]   = useState('')
@@ -81,9 +83,10 @@ export default function MissionDetail() {
   const client  = getClient(mission.clientId)
   const team    = mission.teamIds?.map((tid) => getEmployee(tid)).filter(Boolean) ?? []
   const vehicle = mission.vehicleId ? getVehicle(mission.vehicleId) : null
-  const isNettoyage = mission.type !== 'ramassage'
-  const canReport   = mission.status === 'en_cours' || mission.status === 'termine'
-  const canInvoice  = mission.status === 'termine'
+  const isNettoyage    = mission.type !== 'ramassage'
+  const canReport      = mission.status === 'en_cours' || mission.status === 'termine'
+  const canInvoice     = mission.status === 'termine'
+  const linkedInvoice  = invoices.find((i) => i.missionId === mission.id)
   const checklist   = mission.cleaningData?.checklist ?? []
   const photos      = mission.cleaningData?.photos ?? []
 
@@ -116,9 +119,19 @@ export default function MissionDetail() {
   const toggleChecklistItem = async (index) => {
     const checklist = [...(mission.cleaningData?.checklist ?? [])]
     checklist[index] = { ...checklist[index], done: !checklist[index].done }
-    await update(mission.id, {
-      cleaningData: { ...mission.cleaningData, checklist },
-    })
+    await update(mission.id, { cleaningData: { ...mission.cleaningData, checklist } })
+  }
+
+  const addChecklistItem = async () => {
+    if (!newCheckItem.trim()) return
+    const checklist = [...(mission.cleaningData?.checklist ?? []), { label: newCheckItem.trim(), done: false }]
+    await update(mission.id, { cleaningData: { ...mission.cleaningData, checklist } })
+    setNewCheckItem('')
+  }
+
+  const removeChecklistItem = async (index) => {
+    const checklist = (mission.cleaningData?.checklist ?? []).filter((_, i) => i !== index)
+    await update(mission.id, { cleaningData: { ...mission.cleaningData, checklist } })
   }
 
   // ── Photo upload ──────────────────────────────────────────────────────────
@@ -383,25 +396,45 @@ export default function MissionDetail() {
           </div>
           <div className="space-y-2">
             {checklist.map((item, i) => (
-              <button
-                key={i}
-                onClick={() => toggleChecklistItem(i)}
-                className={`w-full flex items-center gap-3 p-3 rounded-xl border transition-all text-left ${
-                  item.done
-                    ? 'bg-green-50 border-green-200'
-                    : 'bg-white border-slate-100 hover:border-primary/30'
-                }`}
-              >
-                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
-                  item.done ? 'bg-green-500 border-green-500' : 'border-slate-300'
-                }`}>
-                  {item.done && <CheckCircle size={12} className="text-white" />}
-                </div>
-                <span className={`text-sm font-medium ${item.done ? 'line-through text-slate-400' : 'text-slate-700'}`}>
-                  {item.label}
-                </span>
-              </button>
+              <div key={i} className={`flex items-center gap-2 rounded-xl border transition-all ${item.done ? 'bg-green-50 border-green-200' : 'bg-white border-slate-100'}`}>
+                <button
+                  onClick={() => toggleChecklistItem(i)}
+                  className="flex items-center gap-3 flex-1 p-3 text-left"
+                >
+                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${item.done ? 'bg-green-500 border-green-500' : 'border-slate-300'}`}>
+                    {item.done && <CheckCircle size={12} className="text-white" />}
+                  </div>
+                  <span className={`text-sm font-medium ${item.done ? 'line-through text-slate-400' : 'text-slate-700'}`}>
+                    {item.label}
+                  </span>
+                </button>
+                <button
+                  onClick={() => removeChecklistItem(i)}
+                  className="p-2 mr-1 text-slate-300 hover:text-red-400 transition-colors rounded-lg"
+                  aria-label="Supprimer l'item"
+                >
+                  <X size={14} />
+                </button>
+              </div>
             ))}
+
+            {/* Ajouter un item */}
+            <div className="flex gap-2 pt-1">
+              <input
+                className={inputCls + ' flex-1'}
+                value={newCheckItem}
+                onChange={(e) => setNewCheckItem(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && addChecklistItem()}
+                placeholder="Ajouter un item…"
+              />
+              <button
+                onClick={addChecklistItem}
+                disabled={!newCheckItem.trim()}
+                className="px-3 py-2 bg-primary text-white rounded-xl text-sm hover:bg-primary-light disabled:opacity-40 transition-colors"
+              >
+                <Plus size={16} />
+              </button>
+            </div>
           </div>
         </Card>
       )}
@@ -464,6 +497,12 @@ export default function MissionDetail() {
           <h2 className="font-semibold text-slate-900 mb-3">Compte-rendu</h2>
           <Row label="Durée réelle" value={`${mission.report.realDuration}h`} />
           {mission.report.notes && <Row label="Notes" value={mission.report.notes} />}
+          {mission.report.signature && (
+            <div className="mt-3">
+              <p className="text-xs text-slate-400 mb-1">Signature employé</p>
+              <img src={mission.report.signature} alt="Signature" className="max-h-20 border border-slate-100 rounded-xl bg-white p-2" />
+            </div>
+          )}
           {mission.report.incidents?.length > 0 && (
             <div className="mt-3 space-y-2">
               <p className="text-xs text-slate-400">Incidents</p>
@@ -480,6 +519,16 @@ export default function MissionDetail() {
             </div>
           )}
         </Card>
+      )}
+
+      {/* Lien vers facture si existante */}
+      {linkedInvoice && (
+        <button
+          onClick={() => navigate(`/invoicing/${linkedInvoice.id}`)}
+          className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-green-50 border border-green-200 text-green-700 text-sm font-semibold hover:bg-green-100 transition-colors"
+        >
+          <FileText size={16} /> Voir la facture {linkedInvoice.number}
+        </button>
       )}
 
       {/* Action buttons */}

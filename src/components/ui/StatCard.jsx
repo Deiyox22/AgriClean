@@ -3,10 +3,12 @@ import Card from './Card'
 export default function StatCard({ label, value, icon: Icon, color = 'primary', sub }) {
   const colorMap = {
     primary: 'bg-primary/10 text-primary',
-    accent: 'bg-accent/10 text-accent',
-    green: 'bg-green-100 text-green-700',
-    red: 'bg-red-100 text-red-700',
-    blue: 'bg-blue-100 text-blue-700',
+    accent:  'bg-accent/10 text-accent',
+    green:   'bg-green-100 text-green-700',
+    red:     'bg-red-100 text-red-700',
+    blue:    'bg-blue-100 text-blue-700',
+    amber:   'bg-amber-100 text-amber-700',
+    purple:  'bg-purple-100 text-purple-700',
   }
   return (
     <Card className="p-5">
