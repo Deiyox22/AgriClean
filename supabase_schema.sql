@@ -95,6 +95,7 @@ create table if not exists quotes (
   number      text,
   client_id   bigint references clients(id) on delete set null,
   mission_id  bigint references missions(id) on delete set null,
+  invoice_id  bigint references invoices(id) on delete set null,
   lines       jsonb,
   tax         numeric,
   status      text,

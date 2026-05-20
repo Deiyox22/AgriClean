@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import {
   MessageSquare, User, Building2, ClipboardList,
-  Search, ChevronLeft, Plus, X, ChevronRight,
+  Search, ChevronLeft, Plus, X, ChevronRight, Users,
 } from 'lucide-react'
 import { useMessagingStore } from '../../store/useMessagingStore'
 import { useEmployeeStore } from '../../store/useEmployeeStore'
@@ -232,7 +232,7 @@ export default function Messagerie() {
     if (filter === 'clients'   && c.type !== 'direct_client')   return false
     if (filter === 'teams'     && c.type !== 'team')              return false
     if (search.trim()) {
-      const info = getConvInfo(c, employees, clients, missions)
+      const info = getConvInfo(c, employees, clients, teams)
       if (!info.name.toLowerCase().includes(search.toLowerCase())) return false
     }
     return true
@@ -372,7 +372,7 @@ export default function Messagerie() {
                   <ChevronLeft size={20} />
                 </button>
                 {(() => {
-                  const info = getConvInfo(selected, employees, clients, missions)
+                  const info = getConvInfo(selected, employees, clients, teams)
                   const Icon = info.icon
                   return (
                     <>

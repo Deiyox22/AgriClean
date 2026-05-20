@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Download, Mail, CheckCircle, XCircle, FileText, Pencil, ClipboardList } from 'lucide-react'
+import { ArrowLeft, Download, Mail, CheckCircle, XCircle, FileText, Pencil, ClipboardList, Calendar } from 'lucide-react'
 import { useQuoteStore } from '../../store/useQuoteStore'
 import { useInvoiceStore } from '../../store/useInvoiceStore'
+import { useMissionStore } from '../../store/useMissionStore'
 import { useClientStore } from '../../store/useClientStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
 import Card from '../../components/ui/Card'
@@ -132,6 +133,7 @@ export default function QuoteDetail() {
   const update = useQuoteStore((s) => s.update)
   const remove = useQuoteStore((s) => s.remove)
   const addInvoice = useInvoiceStore((s) => s.add)
+  const addMission = useMissionStore((s) => s.add)
   const getClient = useClientStore((s) => s.getById)
   const settings = useSettingsStore((s) => s.settings)
 
@@ -139,6 +141,8 @@ export default function QuoteDetail() {
   const [editLines, setEditLines] = useState(null)
   const [editTax, setEditTax] = useState(20)
   const [editNote, setEditNote] = useState('')
+  const [showConvertModal, setShowConvertModal] = useState(false)
+  const [createMission, setCreateMission] = useState(true)
 
   const quote = getById(Number(id))
   if (!quote) return (
@@ -158,19 +162,40 @@ export default function QuoteDetail() {
     await update(quote.id, { status })
   }
 
-  const handleConvertToInvoice = async () => {
-    if (!confirm('Convertir ce devis en facture ?')) return
+  const handleConvertToInvoice = () => {
+    setShowConvertModal(true)
+  }
+
+  const confirmConversion = async () => {
     const dueDate = addDays(new Date(), 30).toISOString()
+    
+    let missionId = quote.missionId ?? null
+
+    // Créer la mission si demandé
+    if (createMission) {
+      missionId = await addMission({
+        clientId: quote.clientId,
+        type: quote.lines[0]?.description.toLowerCase().includes('ramassage') ? 'ramassage' : 'nettoyage_agricole',
+        date: new Date().toISOString(),
+        status: 'planifie',
+        recurrence: quote.recurrence ?? 'aucune',
+        instructions: quote.note ?? '',
+      })
+    }
+
     const invoiceId = await addInvoice({
       clientId: quote.clientId,
-      missionId: quote.missionId ?? null,
+      missionId,
       lines: quote.lines,
       tax: quote.tax,
       status: 'emise',
       dueDate,
       paidAt: null,
+      note: quote.note ?? '',
     })
-    await update(quote.id, { status: 'converti', invoiceId })
+
+    await update(quote.id, { status: 'converti', invoiceId, missionId })
+    setShowConvertModal(false)
     navigate(`/invoicing/${invoiceId}`)
   }
 
@@ -210,6 +235,70 @@ export default function QuoteDetail() {
 
   return (
     <div className="space-y-4 max-w-2xl">
+      {/* Modal Conversion */}
+      {showConvertModal && (
+        <Modal open title="Convertir en facture" onClose={() => setShowConvertModal(false)}>
+          <div className="space-y-4">
+            <p className="text-sm text-slate-500">
+              Le devis <span className="font-bold text-slate-900">{quote.number}</span> sera converti en facture.
+            </p>
+            
+            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input 
+                  type="checkbox" 
+                  checked={createMission} 
+                  onChange={(e) => setCreateMission(e.target.checked)}
+                  className="w-5 h-5 rounded-lg border-slate-300 text-primary focus:ring-primary/30"
+                />
+                <div>
+                  <p className="text-sm font-bold text-slate-900">Créer également une mission</p>
+                  <p className="text-xs text-slate-500">Une mission planifiée sera ajoutée à votre agenda.</p>
+                </div>
+              </label>
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <button onClick={() => setShowConvertModal(false)}
+                className="flex-1 py-2.5 rounded-2xl border-2 border-slate-200 text-slate-700 font-semibold text-sm hover:bg-slate-50">
+                Annuler
+              </button>
+              <button onClick={confirmConversion}
+                className="flex-1 py-2.5 rounded-2xl bg-primary text-white font-semibold text-sm hover:bg-primary-light">
+                Confirmer
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {editing && (
+        <Modal open title="Modifier le devis" onClose={() => setEditing(false)}>
+          <div className="space-y-5">
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Lignes du devis</label>
+              <LineItemsEditor lines={editLines} onChange={setEditLines} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">TVA (%)</label>
+              <select className={inputCls} value={editTax} onChange={(e) => setEditTax(Number(e.target.value))}>
+                <option value={0}>0%</option>
+                <option value={10}>10%</option>
+                <option value={20}>20%</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Notes / Mentions spécifiques</label>
+              <textarea rows={3} className={inputCls} value={editNote} onChange={(e) => setEditNote(e.target.value)} />
+            </div>
+            <div className="flex gap-3 pt-2">
+              <button onClick={() => setEditing(false)} className="flex-1 py-2.5 rounded-2xl border-2 border-slate-200 text-slate-700 font-semibold text-sm hover:bg-slate-50">Annuler</button>
+              <button onClick={handleSaveEdit} className="flex-1 py-2.5 rounded-2xl bg-primary text-white font-semibold text-sm hover:bg-primary-light">Enregistrer</button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
       <div className="flex items-center gap-2 flex-wrap">
         <button onClick={() => navigate('/invoicing')} className="p-2 rounded-xl hover:bg-slate-100" aria-label="Retour">
           <ArrowLeft size={20} className="text-slate-600" />
