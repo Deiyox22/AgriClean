@@ -14,6 +14,7 @@ import { useMissionStore } from '../../store/useMissionStore'
 import { useClientStore } from '../../store/useClientStore'
 import { useEmployeeStore } from '../../store/useEmployeeStore'
 import { useMessagingStore } from '../../store/useMessagingStore'
+import { useTeamStore, teamColorCls } from '../../store/useTeamStore'
 import { supabase } from '../../lib/supabase'
 import { getMissionTypeLabel, getStatusLabel, getStatusBadgeClass, getInitials } from '../../utils/formatters'
 import Badge from '../../components/ui/Badge'
@@ -294,6 +295,7 @@ export default function EmployeeSpace() {
   const updateMission = useMissionStore((s) => s.update)
   const getClient     = useClientStore((s) => s.getById)
   const allEmployees  = useEmployeeStore((s) => s.employees)
+  const allTeams      = useTeamStore((s) => s.teams)
   const navigate      = useNavigate()
 
   const conversations     = useMessagingStore((s) => s.conversations)
@@ -355,13 +357,10 @@ export default function EmployeeSpace() {
   // Charger les non-lus depuis la DB dès que les conversations sont disponibles
   useEffect(() => {
     if (!empId || conversations.length === 0) return
+    const tIds = new Set(myTeams.map((t) => t.id))
     const myConvs = [
       conversations.find((c) => c.type === 'direct_employee' && c.employeeId === empId),
-      ...conversations.filter((c) => {
-        if (c.type !== 'mission') return false
-        const m = missions.find((ms) => ms.id === c.missionId)
-        return m?.teamIds?.includes(empId)
-      }),
+      ...conversations.filter((c) => c.type === 'team' && tIds.has(c.teamId)),
     ].filter(Boolean)
     if (myConvs.length === 0) return
 
@@ -388,10 +387,16 @@ export default function EmployeeSpace() {
     (c) => c.type === 'direct_employee' && c.employeeId === empId
   )
 
-  const missionConvs = useMemo(() => {
-    const mIds = new Set(empMissions.map((m) => m.id))
-    return conversations.filter((c) => c.type === 'mission' && mIds.has(c.missionId))
-  }, [conversations, empMissions])
+  // Équipes dont l'employé est membre
+  const myTeams = useMemo(
+    () => allTeams.filter((t) => t.memberIds?.includes(empId)),
+    [allTeams, empId]
+  )
+
+  const teamConvs = useMemo(() => {
+    const tIds = new Set(myTeams.map((t) => t.id))
+    return conversations.filter((c) => c.type === 'team' && tIds.has(c.teamId))
+  }, [conversations, myTeams])
 
   const handleOpenDirect = async () => {
     let conv = directConv
@@ -409,11 +414,8 @@ export default function EmployeeSpace() {
     }
   }
 
-  const handleOpenMissionChat = async (mission) => {
-    const conv = await getOrCreate('mission', {
-      missionId: mission.id,
-      title: getMissionTypeLabel(mission.type),
-    })
+  const handleOpenTeamChat = async (team) => {
+    const conv = await getOrCreate('team', { teamId: team.id, title: team.name })
     if (conv) {
       localStorage.setItem(`emp_read_${empId}_${conv.id}`, new Date().toISOString())
       setChatConvId(conv.id)
@@ -526,12 +528,11 @@ export default function EmployeeSpace() {
             {chatConvId ? (
               /* Chat window */
               (() => {
-                const isMissionChat = chatConvId !== directConv?.id
-                const missionConv   = isMissionChat ? missionConvs.find((c) => c.id === chatConvId) : null
-                const mission       = missionConv ? empMissions.find((m) => m.id === missionConv.missionId) : null
-                const teamIds       = mission?.teamIds ?? []
-                const members       = teamIds.map((id) => allEmployees.find((e) => e.id === id)).filter(Boolean)
-                const COLORS = ['bg-indigo-500','bg-amber-500','bg-green-500','bg-rose-500','bg-violet-500','bg-cyan-500']
+                const isTeamChat = chatConvId !== directConv?.id
+                const teamConv   = isTeamChat ? teamConvs.find((c) => c.id === chatConvId) : null
+                const team       = teamConv ? myTeams.find((t) => t.id === teamConv.teamId) : null
+                const members    = (team?.memberIds ?? []).map((id) => allEmployees.find((e) => e.id === id)).filter(Boolean)
+                const colorCls   = team ? teamColorCls(team.color) : 'bg-slate-400'
                 return (
                   <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden flex flex-col" style={{ height: 500 }}>
                     {/* Header */}
@@ -541,20 +542,25 @@ export default function EmployeeSpace() {
                           className="p-1.5 rounded-xl text-slate-400 hover:bg-slate-100 transition-colors">
                           <ArrowLeft size={18} />
                         </button>
+                        {isTeamChat && team && (
+                          <div className={`w-7 h-7 rounded-lg ${colorCls} flex items-center justify-center text-white text-[10px] font-black shrink-0`}>
+                            {team.name.slice(0, 2).toUpperCase()}
+                          </div>
+                        )}
                         <p className="font-semibold text-sm text-slate-800">
-                          {isMissionChat ? (missionConv?.title ?? 'Chat équipe') : 'Manager'}
+                          {isTeamChat ? (team?.name ?? 'Chat équipe') : 'Manager'}
                         </p>
                       </div>
-                      {/* Participants pour les chats mission */}
-                      {isMissionChat && members.length > 0 && (
+                      {/* Participants pour les chats équipe */}
+                      {isTeamChat && members.length > 0 && (
                         <div className="px-4 pb-3 flex flex-wrap gap-1.5">
                           <div className="flex items-center gap-1.5 bg-primary/10 rounded-full px-2.5 py-1">
                             <div className="w-5 h-5 rounded-full bg-primary flex items-center justify-center text-white text-[9px] font-bold shrink-0">M</div>
                             <span className="text-xs font-medium text-primary">Manager</span>
                           </div>
-                          {members.map((emp, i) => (
+                          {members.map((emp) => (
                             <div key={emp.id} className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 ${emp.id === empId ? 'bg-primary/10' : 'bg-slate-100'}`}>
-                              <div className={`w-5 h-5 rounded-full ${COLORS[i % COLORS.length]} flex items-center justify-center text-white text-[9px] font-bold shrink-0`}>
+                              <div className={`w-5 h-5 rounded-full ${colorCls} flex items-center justify-center text-white text-[9px] font-bold shrink-0`}>
                                 {getInitials(emp.firstName, emp.lastName)}
                               </div>
                               <span className={`text-xs font-medium ${emp.id === empId ? 'text-primary' : 'text-slate-700'}`}>
@@ -606,16 +612,21 @@ export default function EmployeeSpace() {
                   )
                 })()}
 
-                {/* Mission chats */}
-                {empMissions.filter((m) => m.status !== 'annule').slice(0, 5).map((mission) => {
-                  const existingConv = missionConvs.find((c) => c.missionId === mission.id)
-                  const unread = sessionUnreadByConv[existingConv?.id] ?? 0
+                {/* Chats d'équipe */}
+                {myTeams.length === 0 ? (
+                  <div className="text-center py-8 text-slate-400 text-sm bg-white rounded-2xl border border-slate-100">
+                    Vous n'êtes membre d'aucune équipe pour l'instant.
+                  </div>
+                ) : myTeams.map((team) => {
+                  const existingConv = teamConvs.find((c) => c.teamId === team.id)
+                  const unread       = sessionUnreadByConv[existingConv?.id] ?? 0
+                  const colorCls     = teamColorCls(team.color)
                   return (
-                    <button key={mission.id} onClick={() => handleOpenMissionChat(mission)}
+                    <button key={team.id} onClick={() => handleOpenTeamChat(team)}
                       className="w-full flex items-center gap-3 p-4 bg-white rounded-2xl border border-slate-100 text-left hover:bg-slate-50 transition-colors">
                       <div className="relative w-11 h-11 shrink-0">
-                        <div className="w-11 h-11 rounded-2xl bg-green-100 flex items-center justify-center text-xl">
-                          {TYPE_ICON[mission.type] ?? '📋'}
+                        <div className={`w-11 h-11 rounded-2xl ${colorCls} flex items-center justify-center text-white font-black text-sm`}>
+                          {team.name.slice(0, 2).toUpperCase()}
                         </div>
                         {unread > 0 && (
                           <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
@@ -625,13 +636,12 @@ export default function EmployeeSpace() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className={`font-semibold text-sm truncate ${unread > 0 ? 'text-slate-900' : 'text-slate-700'}`}>
-                          {getMissionTypeLabel(mission.type)}
+                          {team.name}
                         </p>
                         <p className="text-xs text-slate-400 mt-0.5">
                           {unread > 0
                             ? `${unread} message${unread > 1 ? 's' : ''} non lu${unread > 1 ? 's' : ''}`
-                            : `Chat équipe · ${format(new Date(mission.date), 'd MMM', { locale: fr })}`
-                          }
+                            : `${team.memberIds?.length ?? 0} membre${(team.memberIds?.length ?? 0) > 1 ? 's' : ''} · Chat d'équipe`}
                         </p>
                       </div>
                       {!existingConv && unread === 0 && (
@@ -641,12 +651,6 @@ export default function EmployeeSpace() {
                     </button>
                   )
                 })}
-
-                {empMissions.length === 0 && (
-                  <div className="text-center py-8 text-slate-400 text-sm bg-white rounded-2xl border border-slate-100">
-                    Aucune mission assignée pour l'instant.
-                  </div>
-                )}
               </>
             )}
           </div>

@@ -4,7 +4,7 @@ import {
   LayoutDashboard, CalendarDays, ClipboardList, Building2,
   Users, Truck, Receipt, FileCheck, Settings, Leaf,
   LogOut, Menu, X, Globe, UserCheck, BarChart2, BellRing,
-  ChevronRight, MessageSquare,
+  ChevronRight, MessageSquare, Target,
 } from 'lucide-react'
 import { useAuthStore } from '../../store/useAuthStore'
 import { useInvoiceStore } from '../../store/useInvoiceStore'
@@ -48,6 +48,7 @@ const NAV = [
     { to: '/planning',  label: 'Planning',  icon: CalendarDays },
     { to: '/missions',  label: 'Missions',  icon: ClipboardList },
     { to: '/clients',   label: 'Clients',   icon: Building2 },
+    { to: '/prospects', label: 'Prospects', icon: Target },
   ]},
   { section: 'Équipe', items: [
     { to: '/team',              label: 'Employés',     icon: Users    },

@@ -43,13 +43,14 @@ export const useMessagingStore = create((set, get) => ({
     }
   },
 
-  async getOrCreate(type, { employeeId, clientId, missionId, title } = {}) {
+  async getOrCreate(type, { employeeId, clientId, missionId, teamId, title } = {}) {
     const list = get().conversations
     const found = list.find((c) => {
       if (c.type !== type) return false
       if (type === 'direct_employee') return c.employeeId === employeeId
       if (type === 'direct_client')   return c.clientId   === clientId
-      if (type === 'mission')          return c.missionId  === missionId
+      if (type === 'mission')         return c.missionId  === missionId
+      if (type === 'team')            return c.teamId     === teamId
       return false
     })
     if (found) return found
@@ -62,6 +63,7 @@ export const useMessagingStore = create((set, get) => ({
         employee_id: employeeId ?? null,
         client_id:   clientId   ?? null,
         mission_id:  missionId  ?? null,
+        team_id:     teamId     ?? null,
       })
       .select()
       .single()

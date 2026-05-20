@@ -53,8 +53,8 @@ const ENGAGEMENTS = [
 ]
 
 const AVIS = [
-  { nom: 'Pierre L.', role: 'Éleveur avicole — Gard', note: 5, texte: 'Service impeccable depuis 3 ans. Les équipes sont ponctuelles, sérieuses et les rapports m\'aident à suivre mes bâtiments.' },
-  { nom: 'Marie-Claude D.', role: 'GAEC — Hérault', note: 5, texte: 'Intervention rapide pour un nettoyage d\'urgence. Résultat parfait, tarif honnête. Je recommande.' },
+  { nom: 'Pierre L.', role: 'Éleveur avicole — Côtes-d\'Armor', note: 5, texte: 'Service impeccable depuis 3 ans. Les équipes sont ponctuelles, sérieuses et les rapports m\'aident à suivre mes bâtiments.' },
+  { nom: 'Marie-Claude D.', role: 'GAEC — Ille-et-Vilaine', note: 5, texte: 'Intervention rapide pour un nettoyage d\'urgence. Résultat parfait, tarif honnête. Je recommande.' },
   { nom: 'Sébastien R.', role: 'Directeur — Site industriel', note: 5, texte: 'Protocoles HACCP parfaitement respectés. Le suivi via l\'espace client est un vrai plus pour nos audits.' },
 ]
 
@@ -156,8 +156,8 @@ export default function Landing() {
 
           {/* Badge */}
           <span className="inline-flex items-center gap-2 px-3 py-1.5 bg-white/10 border border-white/20 rounded-full text-xs font-semibold text-white/80 uppercase tracking-widest mb-8">
-            <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-            Gard · Hérault · Aveyron
+            <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse shrink-0" />
+            <span>Bretagne &amp; Grand Ouest</span>
           </span>
 
           {/* Titre */}
@@ -340,7 +340,7 @@ export default function Landing() {
                 {[
                   { icon: Phone, label: 'Téléphone', value: '04 66 00 11 22', href: 'tel:0466001122' },
                   { icon: Mail,  label: 'Email',     value: 'contact@agriclean.fr', href: 'mailto:contact@agriclean.fr' },
-                  { icon: MapPin,label: 'Zone d\'intervention', value: 'Gard · Hérault · Aveyron · Lozère', href: null },
+                  { icon: MapPin,label: 'Zone d\'intervention', value: 'Côtes-d\'Armor · Ille-et-Vilaine · Morbihan · Finistère', href: null },
                 ].map(({ icon: Icon, label, value, href }) => (
                   <div key={label} className="flex items-center gap-3">
                     <div className="w-10 h-10 bg-stone-100 rounded-xl flex items-center justify-center shrink-0">

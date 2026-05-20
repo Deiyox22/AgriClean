@@ -13,6 +13,7 @@ import { useSettingsStore } from './store/useSettingsStore'
 import { useAuthStore } from './store/useAuthStore'
 import { useTeamStore } from './store/useTeamStore'
 import { useMessagingStore } from './store/useMessagingStore'
+import { useProspectStore } from './store/useProspectStore'
 import { useRealtime } from './hooks/useRealtime'
 import ToastContainer from './components/ui/Toast'
 
@@ -43,6 +44,7 @@ const EmployeeSpace = lazy(() => import('./pages/employee/EmployeeSpace'))
 const Rapports = lazy(() => import('./pages/Rapports'))
 const Alertes  = lazy(() => import('./pages/Alertes'))
 const Messagerie = lazy(() => import('./pages/messaging/Messagerie'))
+const Prospects  = lazy(() => import('./pages/prospects/Prospects'))
 
 function Spinner() {
   return (
@@ -60,6 +62,7 @@ function ManagerApp() {
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/clients" element={<ClientList />} />
           <Route path="/clients/:id" element={<ClientDetail />} />
+          <Route path="/prospects" element={<Prospects />} />
           <Route path="/team" element={<TeamList />} />
           <Route path="/team/candidatures" element={<Candidatures />} />
           <Route path="/team/:id" element={<EmployeeDetail />} />
@@ -94,6 +97,7 @@ function AppInner() {
   const loadQuotes = useQuoteStore((s) => s.load)
   const loadSettings = useSettingsStore((s) => s.load)
   const loadTeams        = useTeamStore((s) => s.load)
+  const loadProspects    = useProspectStore((s) => s.load)
   const managerLoggedIn  = useAuthStore((s) => s.managerLoggedIn)
   const employeeSession  = useAuthStore((s) => s.employeeSession)
   const loadUnreadTotal   = useMessagingStore((s) => s.loadUnreadTotal)
@@ -123,6 +127,7 @@ function AppInner() {
         loadQuotes(),
         loadSettings(),
         loadTeams(),
+        loadProspects(),
       ])
       escalateOverdue()
       if (managerLoggedIn || employeeSession) {

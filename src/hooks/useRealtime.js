@@ -111,12 +111,12 @@ export function useRealtime() {
 
         // ── Employé ──────────────────────────────────────────────────────────
         if (employeeSession && msg.senderType === 'manager') {
-          const isDirectConv  = conv.type === 'direct_employee' && conv.employeeId === employeeSession.employeeId
-          const isMissionConv = conv.type === 'mission' && (() => {
-            const mission = useMissionStore.getState().missions.find((m) => m.id === conv.missionId)
-            return mission?.teamIds?.includes(employeeSession.employeeId)
+          const isDirectConv = conv.type === 'direct_employee' && conv.employeeId === employeeSession.employeeId
+          const isTeamConv   = conv.type === 'team' && (() => {
+            const team = useTeamStore.getState().teams.find((t) => t.id === conv.teamId)
+            return team?.memberIds?.includes(employeeSession.employeeId)
           })()
-          if (isDirectConv || isMissionConv) {
+          if (isDirectConv || isTeamConv) {
             toast.info('Nouveau message du manager')
             useMessagingStore.getState().incrementSessionUnread(conv.id)
           }

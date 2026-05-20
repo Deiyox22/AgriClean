@@ -6,19 +6,19 @@ import {
 import { useMessagingStore } from '../../store/useMessagingStore'
 import { useEmployeeStore } from '../../store/useEmployeeStore'
 import { useClientStore } from '../../store/useClientStore'
-import { useMissionStore } from '../../store/useMissionStore'
+import { useTeamStore, teamColorCls } from '../../store/useTeamStore'
 import ChatPanel from '../../components/messaging/ChatPanel'
 import NotifPrompt from '../../components/ui/NotifPrompt'
-import { getMissionTypeLabel, getInitials } from '../../utils/formatters'
+import { getInitials } from '../../utils/formatters'
 import { format, isToday, isYesterday, isThisWeek } from 'date-fns'
 import { fr } from 'date-fns/locale'
 
-function getConvInfo(conv, employees, clients, missions) {
+function getConvInfo(conv, employees, clients, teams) {
   if (conv.type === 'direct_employee') {
     const emp = employees.find((e) => e.id === conv.employeeId)
     return {
       name:     emp ? `${emp.firstName} ${emp.lastName}` : (conv.title ?? 'Employé'),
-      subtitle: 'Employé',
+      subtitle: 'Message direct',
       icon:     User,
       color:    'bg-indigo-100 text-indigo-600 dark:bg-indigo-900/40 dark:text-indigo-400',
     }
@@ -32,13 +32,15 @@ function getConvInfo(conv, employees, clients, missions) {
       color:    'bg-amber-100 text-amber-600 dark:bg-amber-900/40 dark:text-amber-400',
     }
   }
-  if (conv.type === 'mission') {
-    const mission = missions.find((m) => m.id === conv.missionId)
+  if (conv.type === 'team') {
+    const team = teams.find((t) => t.id === conv.teamId)
+    const bg   = teamColorCls(team?.color ?? 'green')
     return {
-      name:     mission ? getMissionTypeLabel(mission.type) : (conv.title ?? 'Mission'),
-      subtitle: mission ? new Date(mission.date).toLocaleDateString('fr-FR') : 'Équipe mission',
-      icon:     ClipboardList,
-      color:    'bg-green-100 text-green-600 dark:bg-green-900/40 dark:text-green-400',
+      name:     team?.name ?? (conv.title ?? 'Équipe'),
+      subtitle: team ? `${team.memberIds?.length ?? 0} membre${(team.memberIds?.length ?? 0) > 1 ? 's' : ''}` : 'Chat d\'équipe',
+      icon:     Users,
+      color:    `${bg} text-white`,
+      teamColor: bg,
     }
   }
   return {
@@ -51,15 +53,15 @@ function getConvInfo(conv, employees, clients, missions) {
 
 // ── Modale nouvelle conversation ──────────────────────────────────────────────
 
-function NewConvModal({ employees, clients, missions, onSelect, onClose }) {
-  const [step, setStep]       = useState('type')   // 'type' | 'pick'
-  const [type, setType]       = useState(null)
-  const [search, setSearch]   = useState('')
+function NewConvModal({ employees, clients, teams, onSelect, onClose }) {
+  const [step, setStep]     = useState('type')
+  const [type, setType]     = useState(null)
+  const [search, setSearch] = useState('')
 
   const TYPES = [
-    { key: 'direct_employee', label: 'Employé',    icon: User,          color: 'bg-indigo-50 border-indigo-200 text-indigo-700' },
-    { key: 'direct_client',   label: 'Client',     icon: Building2,     color: 'bg-amber-50 border-amber-200 text-amber-700' },
-    { key: 'mission',         label: 'Équipe mission', icon: ClipboardList, color: 'bg-green-50 border-green-200 text-green-700' },
+    { key: 'direct_employee', label: 'Employé',  icon: User,      color: 'bg-indigo-50 border-indigo-200 text-indigo-700' },
+    { key: 'direct_client',   label: 'Client',   icon: Building2, color: 'bg-amber-50 border-amber-200 text-amber-700' },
+    { key: 'team',            label: 'Équipe',   icon: Users,     color: 'bg-green-50 border-green-200 text-green-700' },
   ]
 
   const items = (() => {
@@ -72,14 +74,13 @@ function NewConvModal({ employees, clients, missions, onSelect, onClose }) {
       return clients
         .filter((c) => !q || c.name.toLowerCase().includes(q))
         .map((c) => ({ id: c.id, label: c.name, sub: c.type }))
-    if (type === 'mission')
-      return missions
-        .filter((m) => m.status !== 'annule' && (!q || getMissionTypeLabel(m.type).toLowerCase().includes(q)))
-        .slice(0, 20)
-        .map((m) => ({
-          id: m.id,
-          label: getMissionTypeLabel(m.type),
-          sub: new Date(m.date).toLocaleDateString('fr-FR'),
+    if (type === 'team')
+      return teams
+        .filter((t) => !q || t.name.toLowerCase().includes(q))
+        .map((t) => ({
+          id: t.id,
+          label: t.name,
+          sub: `${t.memberIds?.length ?? 0} membre${(t.memberIds?.length ?? 0) > 1 ? 's' : ''}`,
         }))
     return []
   })()
@@ -182,7 +183,7 @@ const FILTERS = [
   { key: 'all',       label: 'Tous' },
   { key: 'employees', label: 'Employés' },
   { key: 'clients',   label: 'Clients' },
-  { key: 'missions',  label: 'Missions' },
+  { key: 'teams',     label: 'Équipes' },
 ]
 
 // ── Page principale ───────────────────────────────────────────────────────────
@@ -200,7 +201,7 @@ export default function Messagerie() {
   const clearPendingConv  = useMessagingStore((s) => s.clearPendingConv)
   const employees         = useEmployeeStore((s) => s.employees)
   const clients           = useClientStore((s) => s.clients)
-  const missions          = useMissionStore((s) => s.missions)
+  const teams             = useTeamStore((s) => s.teams)
 
   const [selected,   setSelected]   = useState(null)
   const [filter,     setFilter]     = useState('all')
@@ -229,7 +230,7 @@ export default function Messagerie() {
   const filtered = conversations.filter((c) => {
     if (filter === 'employees' && c.type !== 'direct_employee') return false
     if (filter === 'clients'   && c.type !== 'direct_client')   return false
-    if (filter === 'missions'  && c.type !== 'mission')          return false
+    if (filter === 'teams'     && c.type !== 'team')              return false
     if (search.trim()) {
       const info = getConvInfo(c, employees, clients, missions)
       if (!info.name.toLowerCase().includes(search.toLowerCase())) return false
@@ -255,7 +256,7 @@ export default function Messagerie() {
     const params =
       type === 'direct_employee' ? { employeeId: item.id, title: item.label } :
       type === 'direct_client'   ? { clientId:   item.id, title: item.label } :
-      /* mission */                { missionId:   item.id, title: item.label }
+      /* team */                   { teamId:      item.id, title: item.label }
 
     const conv = await getOrCreate(type, params)
     if (conv) handleSelect(conv)
@@ -320,7 +321,7 @@ export default function Messagerie() {
             </div>
           ) : (
             filtered.map((conv) => {
-              const info     = getConvInfo(conv, employees, clients, missions)
+              const info     = getConvInfo(conv, employees, clients, teams)
               const Icon     = info.icon
               const unread   = getUnread(conv.id)
               const isActive = selected?.id === conv.id
@@ -388,10 +389,9 @@ export default function Messagerie() {
               </div>
 
               {/* Participants (missions uniquement) */}
-              {selected.type === 'mission' && (() => {
-                const mission    = missions.find((m) => m.id === selected.missionId)
-                const teamIds    = mission?.teamIds ?? []
-                const members    = teamIds.map((id) => employees.find((e) => e.id === id)).filter(Boolean)
+              {selected.type === 'team' && (() => {
+                const team    = teams.find((t) => t.id === selected.teamId)
+                const members = (team?.memberIds ?? []).map((id) => employees.find((e) => e.id === id)).filter(Boolean)
                 if (members.length === 0) return null
                 const COLORS = ['bg-indigo-500','bg-amber-500','bg-green-500','bg-rose-500','bg-violet-500','bg-cyan-500']
                 return (
@@ -446,7 +446,7 @@ export default function Messagerie() {
         <NewConvModal
           employees={employees}
           clients={clients}
-          missions={missions}
+          teams={teams}
           onSelect={handleNewConv}
           onClose={() => setShowNewModal(false)}
         />
