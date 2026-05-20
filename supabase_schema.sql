@@ -85,19 +85,23 @@ create table if not exists invoices (
   status     text,
   due_date   text,
   paid_at    text,
+  note       text,
   created_at text
 );
 
 -- Devis (FK vers clients et missions)
 create table if not exists quotes (
-  id         bigint generated always as identity primary key,
-  number     text,
-  client_id  bigint references clients(id) on delete set null,
-  mission_id bigint references missions(id) on delete set null,
-  lines      jsonb,
-  tax        numeric,
-  status     text,
-  created_at text
+  id          bigint generated always as identity primary key,
+  number      text,
+  client_id   bigint references clients(id) on delete set null,
+  mission_id  bigint references missions(id) on delete set null,
+  lines       jsonb,
+  tax         numeric,
+  status      text,
+  note        text,
+  valid_until text,
+  recurrence  text,
+  created_at  text
 );
 
 -- Paramètres (une seule ligne)
