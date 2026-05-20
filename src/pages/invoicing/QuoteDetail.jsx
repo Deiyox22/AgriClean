@@ -21,17 +21,30 @@ function generateQuotePDF(quote, client, settings) {
   const company = settings?.company ?? {}
   const primaryColor = [26, 71, 49]
 
+  // Header
   doc.setFillColor(...primaryColor)
   doc.rect(0, 0, 210, 40, 'F')
+
+  if (company.logo) {
+    try {
+      const fmt = company.logo.startsWith('data:image/png') ? 'PNG' : company.logo.startsWith('data:image/svg') ? 'SVG' : 'JPEG'
+      doc.addImage(company.logo, fmt, 10, 4, 32, 32)
+    } catch {
+      doc.setTextColor(255, 255, 255); doc.setFontSize(22); doc.setFont('helvetica', 'bold')
+      doc.text(company.name ?? 'AgriClean', 14, 18)
+    }
+  } else {
+    doc.setTextColor(255, 255, 255); doc.setFontSize(22); doc.setFont('helvetica', 'bold')
+    doc.text(company.name ?? 'AgriClean', 14, 18)
+  }
+
+  const textX = company.logo ? 46 : 14
   doc.setTextColor(255, 255, 255)
-  doc.setFontSize(22)
-  doc.setFont('helvetica', 'bold')
-  doc.text('AgriClean', 14, 18)
   doc.setFontSize(9)
   doc.setFont('helvetica', 'normal')
-  doc.text(company.name ?? '', 14, 26)
-  doc.text(company.address ?? '', 14, 31)
-  doc.text(`Tél : ${company.phone ?? ''}  |  ${company.email ?? ''}`, 14, 36)
+  doc.text(company.name ?? '', textX, company.logo ? 14 : 26)
+  doc.text(company.address ?? '', textX, company.logo ? 20 : 31)
+  doc.text(`Tél : ${company.phone ?? ''}  |  ${company.email ?? ''}`, textX, company.logo ? 26 : 36)
 
   doc.setTextColor(0, 0, 0)
   doc.setFontSize(18)
@@ -59,17 +72,17 @@ function generateQuotePDF(quote, client, settings) {
   }
 
   const rows = (quote.lines ?? []).map((l) => [
-    l.description, l.quantity,
+    l.description, l.quantity, l.unit ?? '—',
     formatCurrency(l.unitPrice), formatCurrency(l.total),
   ])
   autoTable(doc, {
     startY: 100,
-    head: [['Description', 'Qté', 'Prix unit. HT', 'Total HT']],
+    head: [['Description', 'Qté', 'Unité', 'Prix unit. HT', 'Total HT']],
     body: rows,
     headStyles: { fillColor: primaryColor, textColor: 255, fontStyle: 'bold' },
     alternateRowStyles: { fillColor: [248, 250, 252] },
     styles: { fontSize: 10 },
-    columnStyles: { 0: { cellWidth: 90 }, 1: { halign: 'center' }, 2: { halign: 'right' }, 3: { halign: 'right' } },
+    columnStyles: { 0: { cellWidth: 80 }, 1: { halign: 'center', cellWidth: 14 }, 2: { halign: 'center', cellWidth: 18 }, 3: { halign: 'right' }, 4: { halign: 'right' } },
   })
 
   const finalY = doc.lastAutoTable.finalY + 8
@@ -244,11 +257,24 @@ export default function QuoteDetail() {
           {client?.address && <p className="text-xs text-slate-500">{client.address.street}, {client.address.zip} {client.address.city}</p>}
         </div>
 
+        {/* Récurrence */}
+        {quote.recurrence && quote.recurrence !== 'ponctuel' && (
+          <div className="mt-3 flex items-center gap-2 px-3 py-2 bg-primary/5 rounded-xl">
+            <span className="text-xs font-bold text-primary">↻</span>
+            <p className="text-xs text-primary font-semibold">
+              Prestation {
+                { hebdomadaire: 'hebdomadaire', bimensuelle: 'bimensuelle', mensuelle: 'mensuelle', trimestrielle: 'trimestrielle', annuelle: 'annuelle (contrat)' }[quote.recurrence] ?? quote.recurrence
+              }
+            </p>
+          </div>
+        )}
+
         <table className="w-full mt-4 text-sm">
           <thead>
             <tr className="bg-primary text-white text-xs">
               <th className="text-left px-3 py-2 rounded-l-lg">Description</th>
               <th className="text-center px-3 py-2">Qté</th>
+              <th className="text-center px-3 py-2">Unité</th>
               <th className="text-right px-3 py-2">PU HT</th>
               <th className="text-right px-3 py-2 rounded-r-lg">Total HT</th>
             </tr>
@@ -258,6 +284,7 @@ export default function QuoteDetail() {
               <tr key={i} className={i % 2 === 1 ? 'bg-slate-50' : ''}>
                 <td className="px-3 py-2.5 text-slate-800">{line.description}</td>
                 <td className="px-3 py-2.5 text-center text-slate-600">{line.quantity}</td>
+                <td className="px-3 py-2.5 text-center text-slate-400 text-xs">{line.unit ?? '—'}</td>
                 <td className="px-3 py-2.5 text-right text-slate-600 font-mono">{formatCurrency(line.unitPrice)}</td>
                 <td className="px-3 py-2.5 text-right font-medium text-slate-900 font-mono">{formatCurrency(line.total)}</td>
               </tr>

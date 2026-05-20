@@ -12,7 +12,9 @@ import { useQuoteStore } from './store/useQuoteStore'
 import { useSettingsStore } from './store/useSettingsStore'
 import { useAuthStore } from './store/useAuthStore'
 import { useTeamStore } from './store/useTeamStore'
+import { useMessagingStore } from './store/useMessagingStore'
 import { useRealtime } from './hooks/useRealtime'
+import ToastContainer from './components/ui/Toast'
 
 // Public pages
 const Landing = lazy(() => import('./pages/public/Landing'))
@@ -40,6 +42,7 @@ const Settings = lazy(() => import('./pages/Settings'))
 const EmployeeSpace = lazy(() => import('./pages/employee/EmployeeSpace'))
 const Rapports = lazy(() => import('./pages/Rapports'))
 const Alertes  = lazy(() => import('./pages/Alertes'))
+const Messagerie = lazy(() => import('./pages/messaging/Messagerie'))
 
 function Spinner() {
   return (
@@ -72,6 +75,7 @@ function ManagerApp() {
           <Route path="/invoicing/:id" element={<InvoiceDetail />} />
           <Route path="/rapports" element={<Rapports />} />
           <Route path="/alertes" element={<Alertes />} />
+          <Route path="/messagerie" element={<Messagerie />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
@@ -80,7 +84,8 @@ function ManagerApp() {
   )
 }
 
-export default function App() {
+// AppInner est rendu DANS <BrowserRouter> — useNavigate() y est autorisé
+function AppInner() {
   const loadClients = useClientStore((s) => s.load)
   const loadEmployees = useEmployeeStore((s) => s.load)
   const loadMissions = useMissionStore((s) => s.load)
@@ -88,9 +93,11 @@ export default function App() {
   const loadInvoices = useInvoiceStore((s) => s.load)
   const loadQuotes = useQuoteStore((s) => s.load)
   const loadSettings = useSettingsStore((s) => s.load)
-  const loadTeams    = useTeamStore((s) => s.load)
-  const managerLoggedIn = useAuthStore((s) => s.managerLoggedIn)
-  const employeeSession = useAuthStore((s) => s.employeeSession)
+  const loadTeams        = useTeamStore((s) => s.load)
+  const managerLoggedIn  = useAuthStore((s) => s.managerLoggedIn)
+  const employeeSession  = useAuthStore((s) => s.employeeSession)
+  const loadUnreadTotal   = useMessagingStore((s) => s.loadUnreadTotal)
+  const loadConversations = useMessagingStore((s) => s.loadConversations)
 
   const escalateOverdue = useInvoiceStore((s) => s.escalateOverdue)
   const theme = useSettingsStore((s) => s.settings.theme)
@@ -101,7 +108,7 @@ export default function App() {
     localStorage.setItem('agriclean-theme', theme ?? 'light')
   }, [theme])
 
-  // Supabase Realtime sync
+  // Supabase Realtime sync (useNavigate disponible ici car on est dans le Router)
   useRealtime()
 
   useEffect(() => {
@@ -118,39 +125,52 @@ export default function App() {
         loadTeams(),
       ])
       escalateOverdue()
+      if (managerLoggedIn || employeeSession) {
+        loadConversations()
+        if (managerLoggedIn) loadUnreadTotal()
+      }
     }
     init()
   }, [])
 
   return (
-    <BrowserRouter>
-      <Suspense fallback={<Spinner />}>
-        <Routes>
-          {/* Public routes */}
-          <Route path="/" element={<Landing />} />
-          <Route path="/candidats" element={<CandidatPortal />} />
-          <Route path="/espace-pro" element={<ClientPortal />} />
-          <Route path="/connexion" element={
-            managerLoggedIn ? <Navigate to="/dashboard" replace /> : 
-            employeeSession ? <Navigate to="/mon-espace" replace /> :
-            <Login />
-          } />
+    <Suspense fallback={<Spinner />}>
+      <Routes>
+        {/* Public routes */}
+        <Route path="/" element={<Landing />} />
+        <Route path="/candidats" element={<CandidatPortal />} />
+        <Route path="/espace-pro" element={<ClientPortal />} />
+        <Route path="/connexion" element={
+          managerLoggedIn ? <Navigate to="/dashboard" replace /> :
+          employeeSession ? <Navigate to="/mon-espace" replace /> :
+          <Login />
+        } />
 
-          {/* Employee route */}
-          <Route path="/mon-espace" element={
-            <ProtectedRoute requireEmployee>
-              <EmployeeSpace />
-            </ProtectedRoute>
-          } />
+        {/* Employee route */}
+        <Route path="/mon-espace" element={
+          <ProtectedRoute requireEmployee>
+            <EmployeeSpace />
+          </ProtectedRoute>
+        } />
 
-          {/* Protected manager routes */}
-          <Route path="/*" element={
-            <ProtectedRoute requireManager>
-              <ManagerApp />
-            </ProtectedRoute>
-          } />
-        </Routes>
-      </Suspense>
-    </BrowserRouter>
+        {/* Protected manager routes */}
+        <Route path="/*" element={
+          <ProtectedRoute requireManager>
+            <ManagerApp />
+          </ProtectedRoute>
+        } />
+      </Routes>
+    </Suspense>
+  )
+}
+
+export default function App() {
+  return (
+    <>
+      <ToastContainer />
+      <BrowserRouter>
+        <AppInner />
+      </BrowserRouter>
+    </>
   )
 }

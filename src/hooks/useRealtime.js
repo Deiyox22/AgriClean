@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase, fromDb } from '../lib/supabase'
 import { useClientStore } from '../store/useClientStore'
 import { useTeamStore } from '../store/useTeamStore'
@@ -9,6 +10,9 @@ import { useQuoteStore } from '../store/useQuoteStore'
 import { useVehicleStore } from '../store/useVehicleStore'
 import { useSettingsStore } from '../store/useSettingsStore'
 import { useApplicationStore } from '../store/useApplicationStore'
+import { useMessagingStore } from '../store/useMessagingStore'
+import { useAuthStore } from '../store/useAuthStore'
+import { toast } from '../store/useToastStore'
 
 // Gère INSERT / UPDATE / DELETE sur un store Zustand dont les données sont une liste
 function syncList(store, key, payload, sortFn) {
@@ -26,7 +30,27 @@ function syncList(store, key, payload, sortFn) {
   }
 }
 
+// Garantit que la conversation est dans le store (la récupère si besoin).
+// Nécessaire car le message INSERT peut arriver avant le conversations INSERT.
+async function ensureConversation(convId) {
+  const found = useMessagingStore.getState().conversations.find((c) => c.id === convId)
+  if (found) return found
+  const { data } = await supabase
+    .from('conversations')
+    .select('*')
+    .eq('id', convId)
+    .maybeSingle()
+  if (data) {
+    const conv = fromDb(data)
+    useMessagingStore.getState().addRealtimeConversation(conv)
+    return conv
+  }
+  return null
+}
+
 export function useRealtime() {
+  const navigate = useNavigate()
+
   useEffect(() => {
     const channel = supabase.channel('realtime-sync')
 
@@ -55,8 +79,68 @@ export function useRealtime() {
           useSettingsStore.setState({ settings: { ...(defaults ?? {}), ...fromDb(p.new) } })
         }
       })
+
+      // ── Messages ────────────────────────────────────────────────────────────
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, async (p) => {
+        const msg = fromDb(p.new)
+
+        // S'assurer que la conversation est dans le store AVANT d'appeler
+        // addRealtimeMessage (pour que le tri lastMessageAt fonctionne)
+        const conv = await ensureConversation(msg.conversationId)
+
+        useMessagingStore.getState().addRealtimeMessage(msg)
+
+        if (!conv) return
+        const { managerLoggedIn, employeeSession, clientSession } = useAuthStore.getState()
+
+        // ── Manager ──────────────────────────────────────────────────────────
+        if (managerLoggedIn && msg.senderType !== 'manager') {
+          const convId = msg.conversationId
+          toast.info(
+            `Nouveau message de ${msg.senderName}`,
+            {
+              label: 'Ouvrir',
+              onClick: () => {
+                useMessagingStore.getState().setPendingConv(convId)
+                navigate('/messagerie')
+              },
+            }
+          )
+          return
+        }
+
+        // ── Employé ──────────────────────────────────────────────────────────
+        if (employeeSession && msg.senderType === 'manager') {
+          const isDirectConv  = conv.type === 'direct_employee' && conv.employeeId === employeeSession.employeeId
+          const isMissionConv = conv.type === 'mission' && (() => {
+            const mission = useMissionStore.getState().missions.find((m) => m.id === conv.missionId)
+            return mission?.teamIds?.includes(employeeSession.employeeId)
+          })()
+          if (isDirectConv || isMissionConv) {
+            toast.info('Nouveau message du manager')
+            useMessagingStore.getState().incrementSessionUnread(conv.id)
+          }
+        }
+
+        // ── Client ───────────────────────────────────────────────────────────
+        if (clientSession && msg.senderType === 'manager') {
+          if (conv.type === 'direct_client' && conv.clientId === clientSession.clientId) {
+            toast.info('Nouveau message du manager')
+            useMessagingStore.getState().incrementSessionUnread(conv.id)
+          }
+        }
+      })
+
+      // ── Nouvelles conversations + mises à jour ───────────────────────────────
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'conversations' }, (p) => {
+        useMessagingStore.getState().addRealtimeConversation(fromDb(p.new))
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'conversations' }, (p) => {
+        useMessagingStore.getState().updateRealtimeConversation(fromDb(p.new))
+      })
+
       .subscribe()
 
     return () => { supabase.removeChannel(channel) }
-  }, [])
+  }, [navigate])
 }

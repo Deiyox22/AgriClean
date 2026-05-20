@@ -7,6 +7,7 @@ import { useInvoiceStore } from '../../store/useInvoiceStore'
 import Card from '../../components/ui/Card'
 import Badge from '../../components/ui/Badge'
 import EmptyState from '../../components/ui/EmptyState'
+import ConfirmModal from '../../components/ui/ConfirmModal'
 import {
   getStatusLabel, getStatusBadgeClass, getClientTypeLabel,
   getMissionTypeLabel, formatDate, formatCurrency,
@@ -29,8 +30,9 @@ export default function ClientDetail() {
   const remove = useClientStore((s) => s.remove)
   const missions = useMissionStore((s) => s.getByClient(Number(id)))
   const invoices = useInvoiceStore((s) => s.getByClient(Number(id)))
-  const [tab, setTab] = useState('Informations')
+  const [tab, setTab]         = useState('Informations')
   const [editing, setEditing] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
 
   const client = getById(Number(id))
 
@@ -44,7 +46,6 @@ export default function ClientDetail() {
   const totalCA = invoices.reduce((sum, inv) => sum + (inv.lines ?? []).reduce((s, l) => s + (l.total ?? 0), 0), 0)
 
   const handleDelete = async () => {
-    if (!confirm(`Supprimer ${client.name} ?`)) return
     await remove(client.id)
     navigate('/clients')
   }
@@ -71,7 +72,7 @@ export default function ClientDetail() {
         <button onClick={() => setEditing(true)} className="p-2 rounded-xl hover:bg-slate-100 transition-colors" aria-label="Modifier">
           <Pencil size={18} className="text-slate-600" />
         </button>
-        <button onClick={handleDelete} className="p-2 rounded-xl hover:bg-red-50 transition-colors" aria-label="Supprimer">
+        <button onClick={() => setConfirmDelete(true)} className="p-2 rounded-xl hover:bg-red-50 transition-colors" aria-label="Supprimer">
           <Trash2 size={18} className="text-red-500" />
         </button>
       </div>
@@ -206,6 +207,16 @@ export default function ClientDetail() {
 
       {tab === 'Documents' && (
         <DocumentsTab client={client} onUpdate={(docs) => update(client.id, { documents: docs })} />
+      )}
+
+      {confirmDelete && (
+        <ConfirmModal
+          title={`Supprimer ${client.name} ?`}
+          message="Cette action est irréversible. Toutes les données associées seront perdues."
+          confirmLabel="Supprimer"
+          onConfirm={handleDelete}
+          onCancel={() => setConfirmDelete(false)}
+        />
       )}
     </div>
   )

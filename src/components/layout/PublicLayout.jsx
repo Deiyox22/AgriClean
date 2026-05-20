@@ -5,7 +5,6 @@ import { Leaf, Menu, X, LogIn } from 'lucide-react'
 const navLinks = [
   { to: '/#services', label: 'Nos services' },
   { to: '/candidats', label: 'Recrutement' },
-  { to: '/espace-pro', label: 'Espace pro' },
 ]
 
 function PublicNav() {
@@ -54,8 +53,8 @@ function PublicNav() {
             </Link>
           ))}
           <Link to="/connexion" onClick={() => setOpen(false)}
-            className="flex items-center gap-2 px-4 py-3 text-sm font-medium text-primary bg-primary/5 rounded-xl">
-            <LogIn size={15} /> Connexion manager
+            className="flex items-center gap-2 px-4 py-3 text-sm font-semibold text-white bg-primary rounded-xl">
+            <LogIn size={15} /> Se connecter
           </Link>
         </div>
       )}
@@ -88,7 +87,7 @@ function PublicFooter() {
             <div className="space-y-2">
               <Link to="/espace-pro" className="block text-sm hover:text-white transition-colors">Espace professionnel</Link>
               <Link to="/candidats" className="block text-sm hover:text-white transition-colors">Déposer une candidature</Link>
-              <Link to="/connexion" className="block text-sm hover:text-white transition-colors">Connexion manager</Link>
+              <Link to="/connexion" className="block text-sm hover:text-white transition-colors">Se connecter</Link>
             </div>
           </div>
         </div>

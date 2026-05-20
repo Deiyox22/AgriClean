@@ -1,6 +1,5 @@
 import Sidebar from './Sidebar'
 import TopBar from './TopBar'
-import ToastContainer from '../ui/Toast'
 
 export default function Layout({ children }) {
   return (
@@ -12,7 +11,6 @@ export default function Layout({ children }) {
           {children}
         </main>
       </div>
-      <ToastContainer />
     </div>
   )
 }

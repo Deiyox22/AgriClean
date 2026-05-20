@@ -8,7 +8,8 @@ import { supabase, fromDb } from '../lib/supabase'
 import { resetAndSeed } from '../db/db'
 import { useVehicleStore } from '../store/useVehicleStore'
 import Card from '../components/ui/Card'
-import { Eye, EyeOff, FileDown, BarChart3, Upload, X } from 'lucide-react'
+import { Eye, EyeOff, FileDown, BarChart3, Upload, X, Save, CheckCircle } from 'lucide-react'
+import ConfirmModal from '../components/ui/ConfirmModal'
 import { generateMonthlyReport, exportHoursCSV } from '../utils/reports'
 
 export default function Settings() {
@@ -21,9 +22,10 @@ export default function Settings() {
   const clients   = useClientStore((s) => s.clients)
   const vehicles  = useVehicleStore((s) => s.vehicles)
   const equipment = useVehicleStore((s) => s.equipment)
-  const [form, setForm] = useState(settings)
-  const [saved, setSaved] = useState(false)
-  const [showPw, setShowPw] = useState(false)
+  const [form, setForm]       = useState(settings)
+  const [saved, setSaved]     = useState(false)
+  const [showPw, setShowPw]   = useState(false)
+  const [confirmReset, setConfirmReset] = useState(false)
 
   useEffect(() => { setForm(settings) }, [settings])
 
@@ -48,7 +50,6 @@ export default function Settings() {
   }
 
   const handleReset = async () => {
-    if (!confirm('Réinitialiser toutes les données avec les données de démonstration ? Cette action est irréversible.')) return
     await resetAndSeed()
     window.location.reload()
   }
@@ -324,11 +325,23 @@ export default function Settings() {
           <button onClick={handleExport} className="flex-1 py-2.5 rounded-xl border border-slate-200 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors">
             Exporter JSON
           </button>
-          <button onClick={handleReset} className="flex-1 py-2.5 rounded-xl border border-red-200 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors">
+          <button onClick={() => setConfirmReset(true)} className="flex-1 py-2.5 rounded-xl border border-red-200 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors">
             Réinitialiser la démo
           </button>
         </div>
       </Card>
+
+      {confirmReset && (
+        <ConfirmModal
+          title="Réinitialiser les données ?"
+          message="Toutes les données seront remplacées par les données de démonstration. Cette action est irréversible."
+          confirmLabel="Réinitialiser"
+          cancelLabel="Annuler"
+          variant="danger"
+          onConfirm={handleReset}
+          onCancel={() => setConfirmReset(false)}
+        />
+      )}
     </div>
   )
 }

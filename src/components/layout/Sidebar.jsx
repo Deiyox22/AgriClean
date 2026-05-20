@@ -4,7 +4,7 @@ import {
   LayoutDashboard, CalendarDays, ClipboardList, Building2,
   Users, Truck, Receipt, FileCheck, Settings, Leaf,
   LogOut, Menu, X, Globe, UserCheck, BarChart2, BellRing,
-  ChevronRight,
+  ChevronRight, MessageSquare,
 } from 'lucide-react'
 import { useAuthStore } from '../../store/useAuthStore'
 import { useInvoiceStore } from '../../store/useInvoiceStore'
@@ -12,6 +12,7 @@ import { useMissionStore } from '../../store/useMissionStore'
 import { useVehicleStore } from '../../store/useVehicleStore'
 import { useApplicationStore } from '../../store/useApplicationStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
+import { useMessagingStore } from '../../store/useMessagingStore'
 import { differenceInDays } from 'date-fns'
 
 // ─── Badge counts ─────────────────────────────────────────────────────────────
@@ -35,6 +36,10 @@ function useCandidatureCount() {
   return useApplicationStore((s) => s.applications.filter((a) => a.status === 'recu').length)
 }
 
+function useMessagesCount() {
+  return useMessagingStore((s) => s.unreadTotal)
+}
+
 // ─── Navigation structure ─────────────────────────────────────────────────────
 
 const NAV = [
@@ -54,8 +59,9 @@ const NAV = [
     { to: '/invoicing?tab=devis',    label: 'Devis',    icon: FileCheck, matchPath: '/invoicing' },
   ]},
   { section: 'Analyse', items: [
-    { to: '/rapports', label: 'Rapports', icon: BarChart2 },
-    { to: '/alertes',  label: 'Alertes',  icon: BellRing, badge: 'alertes' },
+    { to: '/rapports',    label: 'Rapports',    icon: BarChart2 },
+    { to: '/alertes',     label: 'Alertes',     icon: BellRing,       badge: 'alertes' },
+    { to: '/messagerie',  label: 'Messagerie',  icon: MessageSquare,  badge: 'messages' },
   ]},
   { section: null, items: [
     { to: '/settings', label: 'Paramètres', icon: Settings },
@@ -186,7 +192,11 @@ function MobileDrawer({ open, onClose, alertCount, candidatureCount }) {
   const location = useLocation()
   const [confirmLogout, setConfirmLogout] = useState(false)
 
-  const getBadge = (badge) => badge === 'alertes' ? alertCount : badge === 'candidatures' ? candidatureCount : 0
+  const messagesCount    = useMessagesCount()
+  const getBadge = (badge) =>
+    badge === 'alertes'      ? alertCount :
+    badge === 'candidatures' ? candidatureCount :
+    badge === 'messages'     ? messagesCount : 0
 
   const handleLogout = () => { logout(); onClose(); navigate('/connexion') }
 
@@ -285,7 +295,11 @@ export default function Sidebar() {
   const [drawerOpen, setDrawerOpen]       = useState(false)
   const [confirmLogout, setConfirmLogout] = useState(false)
 
-  const getBadge = (badge) => badge === 'alertes' ? alertCount : badge === 'candidatures' ? candidatureCount : 0
+  const messagesCount    = useMessagesCount()
+  const getBadge = (badge) =>
+    badge === 'alertes'      ? alertCount :
+    badge === 'candidatures' ? candidatureCount :
+    badge === 'messages'     ? messagesCount : 0
 
   return (
     <>

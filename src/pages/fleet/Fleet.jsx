@@ -27,7 +27,7 @@ const labelCls = 'block text-xs font-medium text-slate-600 mb-1'
 // ── Forms ────────────────────────────────────────────────────────────────────
 
 function VehicleForm({ initial, onSave, onClose }) {
-  const [form, setForm] = useState(initial ?? { name: '', plate: '', type: 'utilitaire', mileage: 0, nextService: '', nextCT: '', status: 'operationnel' })
+  const [form, setForm] = useState(initial ?? { name: '', plate: '', type: 'utilitaire', mileage: 0, nextService: '', nextCt: '', status: 'operationnel' })
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
   return (
     <form onSubmit={(e) => { e.preventDefault(); onSave(form) }} className="space-y-3">
@@ -41,7 +41,7 @@ function VehicleForm({ initial, onSave, onClose }) {
         </div>
         <div><label className={labelCls}>Kilométrage</label><input type="number" min="0" className={inputCls} value={form.mileage} onChange={(e) => set('mileage', Number(e.target.value))} /></div>
         <div><label className={labelCls}>Prochaine révision</label><input type="date" className={inputCls} value={form.nextService?.substring(0, 10) ?? ''} onChange={(e) => set('nextService', e.target.value)} /></div>
-        <div><label className={labelCls}>Prochain CT</label><input type="date" className={inputCls} value={form.nextCT?.substring(0, 10) ?? ''} onChange={(e) => set('nextCT', e.target.value)} /></div>
+        <div><label className={labelCls}>Prochain CT</label><input type="date" className={inputCls} value={form.nextCt?.substring(0, 10) ?? ''} onChange={(e) => set('nextCt', e.target.value)} /></div>
         <div><label className={labelCls}>Statut</label>
           <select className={inputCls} value={form.status} onChange={(e) => set('status', e.target.value)}>
             <option value="operationnel">Opérationnel</option><option value="maintenance">En maintenance</option><option value="hors_service">Hors service</option>
@@ -194,7 +194,7 @@ export default function Fleet() {
     return days !== null && days < 30 ? days : null
   }
   const getCtAlert = (v) => {
-    const days = getDaysUntil(v.nextCT)
+    const days = getDaysUntil(v.nextCt)
     return days !== null && days < 60 ? days : null
   }
 
@@ -245,13 +245,15 @@ export default function Fleet() {
                       <div className="flex items-center gap-2 flex-wrap">
                         <p className="font-semibold text-slate-900">{v.name}</p>
                         {sAlert !== null && (
-                          <span className="flex items-center gap-1 text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">
-                            <AlertTriangle size={11} /> Révision {sAlert < 0 ? `en retard` : `dans ${sAlert}j`}
+                          <span className={`flex items-center gap-1 text-xs px-2 py-0.5 rounded-full ${sAlert < 0 || sAlert <= 14 ? 'text-red-600 bg-red-50' : 'text-amber-600 bg-amber-50'}`}>
+                            <AlertTriangle size={11} className={sAlert < 0 ? 'animate-pulse' : ''} />
+                            Révision {sAlert < 0 ? `en retard de ${Math.abs(sAlert)}j` : `dans ${sAlert}j`}
                           </span>
                         )}
                         {ctAlert !== null && (
-                          <span className="flex items-center gap-1 text-xs text-red-600 bg-red-50 px-2 py-0.5 rounded-full">
-                            <AlertTriangle size={11} /> CT {ctAlert < 0 ? `expiré` : `dans ${ctAlert}j`}
+                          <span className={`flex items-center gap-1 text-xs px-2 py-0.5 rounded-full ${ctAlert < 0 || ctAlert <= 14 ? 'text-red-600 bg-red-50' : 'text-amber-600 bg-amber-50'}`}>
+                            <AlertTriangle size={11} className={ctAlert < 0 ? 'animate-pulse' : ''} />
+                            CT {ctAlert < 0 ? `expiré depuis ${Math.abs(ctAlert)}j` : `dans ${ctAlert}j`}
                           </span>
                         )}
                       </div>
@@ -259,7 +261,7 @@ export default function Fleet() {
                       <div className="flex items-center gap-2 mt-2 flex-wrap">
                         <Badge className={getStatusBadgeClass(v.status)}>{getStatusLabel(v.status)}</Badge>
                         {v.nextService && <span className="text-xs text-slate-400">Révision : {formatDate(v.nextService)}</span>}
-                        {v.nextCT && <span className="text-xs text-slate-400">CT : {formatDate(v.nextCT)}</span>}
+                        {v.nextCt && <span className="text-xs text-slate-400">CT : {formatDate(v.nextCt)}</span>}
                       </div>
                     </div>
                     <div className="flex gap-2 shrink-0">

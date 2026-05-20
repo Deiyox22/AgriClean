@@ -26,6 +26,7 @@ const PAGE_TITLES = {
   '/settings':         'Paramètres',
   '/rapports':         'Rapports',
   '/alertes':          'Alertes',
+  '/messagerie':       'Messagerie',
 }
 
 const PAGE_ACTIONS = {

@@ -3,7 +3,9 @@ import { formatCurrency } from '../../utils/formatters'
 
 const inputCls = 'w-full px-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary'
 
-export default function LineItemsEditor({ lines, onChange }) {
+const UNITS = ['h', 'm²', 'passage', 'forfait', 'unité', 'km', 'jour']
+
+export default function LineItemsEditor({ lines, onChange, showUnit = false }) {
   const updateLine = (i, key, val) => {
     const next = lines.map((l, idx) => {
       if (idx !== i) return l
@@ -15,24 +17,30 @@ export default function LineItemsEditor({ lines, onChange }) {
   }
 
   const addLine = () =>
-    onChange([...lines, { description: '', quantity: 1, unitPrice: 0, total: 0 }])
+    onChange([...lines, { description: '', quantity: 1, unitPrice: 0, total: 0, unit: 'h' }])
 
   const removeLine = (i) => onChange(lines.filter((_, idx) => idx !== i))
 
   const totalHT = lines.reduce((sum, l) => sum + (l.total ?? 0), 0)
 
+  const colGrid = showUnit
+    ? 'grid-cols-[1fr_60px_70px_100px_100px_32px]'
+    : 'grid-cols-[1fr_60px_100px_100px_32px]'
+
   return (
     <div className="space-y-3">
-      <div className="hidden sm:grid grid-cols-[1fr_60px_100px_100px_32px] gap-2 text-xs font-medium text-slate-400 px-1">
+      {/* Header */}
+      <div className={`hidden sm:grid ${colGrid} gap-2 text-xs font-medium text-slate-400 px-1`}>
         <span>Description</span>
         <span className="text-center">Qté</span>
+        {showUnit && <span className="text-center">Unité</span>}
         <span className="text-right">Prix unit. HT</span>
         <span className="text-right">Total HT</span>
         <span />
       </div>
 
       {lines.map((line, i) => (
-        <div key={i} className="grid grid-cols-1 sm:grid-cols-[1fr_60px_100px_100px_32px] gap-2 items-center p-3 sm:p-0 bg-slate-50 sm:bg-transparent rounded-xl sm:rounded-none">
+        <div key={i} className={`grid grid-cols-1 sm:${colGrid} gap-2 items-center p-3 sm:p-0 bg-slate-50 sm:bg-transparent rounded-xl sm:rounded-none`}>
           <input
             className={inputCls}
             value={line.description}
@@ -41,18 +49,24 @@ export default function LineItemsEditor({ lines, onChange }) {
             aria-label="Description"
           />
           <input
-            type="number"
-            min="0"
-            step="0.5"
+            type="number" min="0" step="0.5"
             className={`${inputCls} text-center`}
             value={line.quantity}
             onChange={(e) => updateLine(i, 'quantity', Number(e.target.value))}
             aria-label="Quantité"
           />
+          {showUnit && (
+            <select
+              className={`${inputCls} text-center`}
+              value={line.unit ?? 'h'}
+              onChange={(e) => updateLine(i, 'unit', e.target.value)}
+              aria-label="Unité"
+            >
+              {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
+            </select>
+          )}
           <input
-            type="number"
-            min="0"
-            step="0.01"
+            type="number" min="0" step="0.01"
             className={`${inputCls} text-right font-mono`}
             value={line.unitPrice}
             onChange={(e) => updateLine(i, 'unitPrice', Number(e.target.value))}
@@ -73,11 +87,8 @@ export default function LineItemsEditor({ lines, onChange }) {
         </div>
       ))}
 
-      <button
-        type="button"
-        onClick={addLine}
-        className="flex items-center gap-2 text-sm text-primary hover:text-primary-light transition-colors py-1"
-      >
+      <button type="button" onClick={addLine}
+        className="flex items-center gap-2 text-sm text-primary hover:text-primary-light transition-colors py-1">
         <Plus size={16} /> Ajouter une ligne
       </button>
 

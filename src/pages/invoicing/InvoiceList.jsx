@@ -102,26 +102,49 @@ function InvoiceForm({ onSave, onClose, clients, settings }) {
   )
 }
 
+const CONDITION_TEMPLATES = {
+  standard: 'Paiement à 30 jours fin de mois. Tout retard de paiement entraîne des pénalités de 3 fois le taux légal en vigueur. TVA non applicable si franchise en base.',
+  contrat:  "Contrat annuel renouvelable par tacite reconduction. Résiliation avec préavis écrit de 3 mois. Révision tarifaire annuelle selon indice INSEE du coût de la main-d'œuvre.",
+  urgent:   'Intervention prioritaire sous 48h ouvrées. Majoration urgence de 20% applicable. Paiement à réception de facture, sans escompte.',
+}
+
+const RECURRENCE_LABELS = {
+  ponctuel:   'Ponctuelle (une seule intervention)',
+  hebdomadaire: 'Hebdomadaire',
+  bimensuelle:  'Bimensuelle (2× par mois)',
+  mensuelle:  'Mensuelle',
+  trimestrielle: 'Trimestrielle',
+  annuelle:   'Annuelle (contrat)',
+}
+
 function QuoteForm({ onSave, onClose, clients, settings }) {
+  const rates = settings?.defaultRates ?? {}
   const [form, setForm] = useState({
-    clientId: '',
-    lines: defaultLines(),
-    tax: 20,
+    clientId:   '',
+    lines:      defaultLines(),
+    tax:        settings?.defaultRates?.tvaDefault ?? 20,
     validUntil: format(addDays(new Date(), 30), 'yyyy-MM-dd'),
-    status: 'brouillon',
-    note: '',
+    recurrence: 'ponctuel',
+    status:     'brouillon',
+    note:       '',
   })
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
   const totalHT = form.lines.reduce((s, l) => s + (l.total ?? 0), 0)
   const inputCls = 'w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary'
   const labelCls = 'block text-xs font-medium text-slate-600 mb-1'
 
-  const prefillFromRates = () => {
-    if (!form.clientId) return
-    const lines = [
-      { description: 'Ramassage d\'œufs', quantity: 1, unitPrice: settings?.defaultRates?.ramassage ?? 80, total: settings?.defaultRates?.ramassage ?? 80 },
-    ]
-    set('lines', lines)
+  const addServiceLine = (type) => {
+    const SERVICES = {
+      ramassage:            { description: 'Ramassage d\'œufs — collecte et comptage en exploitations avicoles', unitPrice: rates.ramassage ?? 68, unit: 'h' },
+      nettoyage_agricole:   { description: 'Nettoyage agricole — désinfection et lavage des bâtiments d\'élevage', unitPrice: rates.nettoyage_agricole ?? 78, unit: 'h' },
+      nettoyage_industriel: { description: 'Nettoyage industriel — dégraissage, désinfection et rinçage haute pression', unitPrice: rates.nettoyage_industriel ?? 98, unit: 'h' },
+      deplacement:          { description: 'Frais de déplacement (aller-retour)', unitPrice: settings?.travelSettings?.ratePerKm ?? 0.68, unit: 'km' },
+    }
+    const svc = SERVICES[type]
+    if (!svc) return
+    const newLine = { description: svc.description, quantity: 1, unitPrice: svc.unitPrice, unit: svc.unit, total: svc.unitPrice }
+    const isEmpty = form.lines.length === 1 && !form.lines[0].description && form.lines[0].unitPrice === 0
+    set('lines', isEmpty ? [newLine] : [...form.lines, newLine])
   }
 
   const handleSubmit = (e) => {
@@ -132,6 +155,8 @@ function QuoteForm({ onSave, onClose, clients, settings }) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
+
+      {/* Client + dates */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="col-span-2">
           <label className={labelCls}>Client *</label>
@@ -147,34 +172,77 @@ function QuoteForm({ onSave, onClose, clients, settings }) {
         <div>
           <label className={labelCls}>TVA (%)</label>
           <select className={inputCls} value={form.tax} onChange={(e) => set('tax', Number(e.target.value))}>
-            <option value={0}>0 % (exonéré)</option>
-            <option value={10}>10 %</option>
-            <option value={20}>20 %</option>
+            <option value={0}>0 % (franchise / exonéré)</option>
+            <option value={10}>10 % (services agricoles ETA)</option>
+            <option value={20}>20 % (taux normal)</option>
           </select>
         </div>
       </div>
 
+      {/* Récurrence */}
       <div>
-        <div className="flex items-center justify-between mb-1">
-          <label className={labelCls}>Lignes de prestation *</label>
-          {form.clientId && (
-            <button type="button" onClick={prefillFromRates} className="text-xs text-primary hover:underline">
-              Pré-remplir depuis tarifs
-            </button>
-          )}
-        </div>
-        <LineItemsEditor lines={form.lines} onChange={(lines) => set('lines', lines)} />
+        <label className={labelCls}>Fréquence d'intervention</label>
+        <select className={inputCls} value={form.recurrence} onChange={(e) => set('recurrence', e.target.value)}>
+          {Object.entries(RECURRENCE_LABELS).map(([k, v]) => (
+            <option key={k} value={k}>{v}</option>
+          ))}
+        </select>
       </div>
 
+      {/* Prestations rapides */}
+      <div>
+        <label className={labelCls}>Ajouter une prestation type</label>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {[
+            { key: 'ramassage',            emoji: '🥚', label: 'Ramassage', price: rates.ramassage ?? 68 },
+            { key: 'nettoyage_agricole',   emoji: '🌿', label: 'Nett. agricole', price: rates.nettoyage_agricole ?? 78 },
+            { key: 'nettoyage_industriel', emoji: '🏭', label: 'Nett. industriel', price: rates.nettoyage_industriel ?? 98 },
+            { key: 'deplacement',          emoji: '🚗', label: 'Déplacement', price: `${settings?.travelSettings?.ratePerKm ?? 0.68}€/km` },
+          ].map((s) => (
+            <button key={s.key} type="button" onClick={() => addServiceLine(s.key)}
+              className="flex flex-col items-center gap-1 p-3 rounded-xl border border-slate-200 hover:border-primary/50 hover:bg-primary/5 transition-all text-center">
+              <span className="text-xl">{s.emoji}</span>
+              <span className="text-xs font-semibold text-slate-700">{s.label}</span>
+              <span className="text-[10px] text-slate-400 font-mono">{typeof s.price === 'number' ? `${s.price}€/h` : s.price}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Lignes */}
+      <div>
+        <label className={labelCls}>Lignes de prestation *</label>
+        <LineItemsEditor lines={form.lines} onChange={(lines) => set('lines', lines)} showUnit />
+      </div>
+
+      {/* Totaux */}
       <div className="bg-slate-50 rounded-xl p-3 text-sm space-y-1">
         <div className="flex justify-between text-slate-600"><span>Total HT</span><span className="font-mono">{formatCurrency(totalHT)}</span></div>
         <div className="flex justify-between text-slate-600"><span>TVA ({form.tax}%)</span><span className="font-mono">{formatCurrency(totalHT * form.tax / 100)}</span></div>
         <div className="flex justify-between font-bold text-slate-900 pt-1 border-t border-slate-200"><span>Total TTC</span><span className="font-mono text-primary">{formatCurrency(totalHT * (1 + form.tax / 100))}</span></div>
+        {form.recurrence !== 'ponctuel' && totalHT > 0 && (
+          <div className="flex justify-between text-xs text-primary font-medium pt-1 border-t border-slate-100">
+            <span>Engagement {RECURRENCE_LABELS[form.recurrence]?.toLowerCase()}</span>
+            <span className="font-mono">{formatCurrency(totalHT)} HT × occurrence</span>
+          </div>
+        )}
       </div>
 
+      {/* Conditions */}
       <div>
-        <label className={labelCls}>Conditions / notes</label>
-        <textarea rows={2} className={inputCls} value={form.note} onChange={(e) => set('note', e.target.value)} placeholder="Conditions particulières, délai d'intervention…" />
+        <div className="flex items-center justify-between mb-2">
+          <label className={labelCls}>Conditions</label>
+          <div className="flex gap-1">
+            {Object.entries({ standard: 'Standard', contrat: 'Contrat', urgent: 'Urgence' }).map(([k, v]) => (
+              <button key={k} type="button" onClick={() => set('note', CONDITION_TEMPLATES[k])}
+                className="text-[10px] px-2 py-1 rounded-lg bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors font-medium">
+                {v}
+              </button>
+            ))}
+          </div>
+        </div>
+        <textarea rows={3} className={inputCls} value={form.note} onChange={(e) => set('note', e.target.value)}
+          placeholder="Conditions particulières, délai d'intervention, remarques…" />
       </div>
 
       <div className="flex gap-3 pt-1">

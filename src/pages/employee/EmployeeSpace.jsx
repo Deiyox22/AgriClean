@@ -1,8 +1,8 @@
-import { useMemo, useState, useRef } from 'react'
+import { useMemo, useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   LogOut, Clock, CheckCircle, Circle, MapPin, Phone,
-  ChevronLeft, ChevronRight, Flag, X, Pen,
+  ChevronLeft, ChevronRight, Flag, X, Pen, MessageSquare, ArrowLeft,
 } from 'lucide-react'
 import {
   isToday, isTomorrow, addDays, subDays, startOfWeek,
@@ -13,8 +13,12 @@ import { useAuthStore } from '../../store/useAuthStore'
 import { useMissionStore } from '../../store/useMissionStore'
 import { useClientStore } from '../../store/useClientStore'
 import { useEmployeeStore } from '../../store/useEmployeeStore'
+import { useMessagingStore } from '../../store/useMessagingStore'
+import { supabase } from '../../lib/supabase'
 import { getMissionTypeLabel, getStatusLabel, getStatusBadgeClass, getInitials } from '../../utils/formatters'
 import Badge from '../../components/ui/Badge'
+import ChatPanel from '../../components/messaging/ChatPanel'
+import NotifPrompt from '../../components/ui/NotifPrompt'
 import { toast } from '../../store/useToastStore'
 
 const TYPE_BG   = { ramassage: 'bg-amber-50 border-amber-200', nettoyage_agricole: 'bg-blue-50 border-blue-200', nettoyage_industriel: 'bg-indigo-50 border-indigo-200' }
@@ -292,10 +296,21 @@ export default function EmployeeSpace() {
   const allEmployees  = useEmployeeStore((s) => s.employees)
   const navigate      = useNavigate()
 
+  const conversations     = useMessagingStore((s) => s.conversations)
+  const loadConversations = useMessagingStore((s) => s.loadConversations)
+  const getOrCreate       = useMessagingStore((s) => s.getOrCreate)
+  const notifCount          = useMessagingStore((s) => s.notifCount)
+  const clearNotif          = useMessagingStore((s) => s.clearNotif)
+  const sessionUnreadByConv = useMessagingStore((s) => s.sessionUnreadByConv)
+  const clearSessionUnread  = useMessagingStore((s) => s.clearSessionUnread)
+  const setOpenConvId       = useMessagingStore((s) => s.setOpenConvId)
+  const initSessionUnread   = useMessagingStore((s) => s.initSessionUnread)
+
   const [currentDay,   setCurrentDay]   = useState(new Date())
   const [tab,          setTab]          = useState('today')
   const [showLogout,   setShowLogout]   = useState(false)
   const [clotureModal, setClotureModal] = useState(null)
+  const [chatConvId,   setChatConvId]   = useState(null)
 
   if (!empSession) { navigate('/connexion'); return null }
 
@@ -333,6 +348,85 @@ export default function EmployeeSpace() {
     ).length
   }, [empMissions])
 
+  useEffect(() => {
+    if (tab === 'messages') loadConversations()
+  }, [tab])
+
+  // Charger les non-lus depuis la DB dès que les conversations sont disponibles
+  useEffect(() => {
+    if (!empId || conversations.length === 0) return
+    const myConvs = [
+      conversations.find((c) => c.type === 'direct_employee' && c.employeeId === empId),
+      ...conversations.filter((c) => {
+        if (c.type !== 'mission') return false
+        const m = missions.find((ms) => ms.id === c.missionId)
+        return m?.teamIds?.includes(empId)
+      }),
+    ].filter(Boolean)
+    if (myConvs.length === 0) return
+
+    const fetchUnread = async () => {
+      const counts = {}
+      for (const conv of myConvs) {
+        // Ne pas compter si la conv est déjà ouverte
+        if (useMessagingStore.getState().openConvId === conv.id) continue
+        const lastRead = localStorage.getItem(`emp_read_${empId}_${conv.id}`) ?? '1970-01-01T00:00:00Z'
+        const { count } = await supabase
+          .from('messages')
+          .select('*', { count: 'exact', head: true })
+          .eq('conversation_id', conv.id)
+          .gt('created_at', lastRead)
+          .or(`sender_type.neq.employee,sender_id.neq.${empId}`)
+        if (count > 0) counts[conv.id] = count
+      }
+      if (Object.keys(counts).length > 0) initSessionUnread(counts)
+    }
+    fetchUnread()
+  }, [conversations, empId])
+
+  const directConv = conversations.find(
+    (c) => c.type === 'direct_employee' && c.employeeId === empId
+  )
+
+  const missionConvs = useMemo(() => {
+    const mIds = new Set(empMissions.map((m) => m.id))
+    return conversations.filter((c) => c.type === 'mission' && mIds.has(c.missionId))
+  }, [conversations, empMissions])
+
+  const handleOpenDirect = async () => {
+    let conv = directConv
+    if (!conv) {
+      conv = await getOrCreate('direct_employee', {
+        employeeId: empId,
+        title: `${empSession.firstName} ${empSession.lastName}`,
+      })
+    }
+    if (conv) {
+      localStorage.setItem(`emp_read_${empId}_${conv.id}`, new Date().toISOString())
+      setChatConvId(conv.id)
+      clearSessionUnread(conv.id)
+      setOpenConvId(conv.id)
+    }
+  }
+
+  const handleOpenMissionChat = async (mission) => {
+    const conv = await getOrCreate('mission', {
+      missionId: mission.id,
+      title: getMissionTypeLabel(mission.type),
+    })
+    if (conv) {
+      localStorage.setItem(`emp_read_${empId}_${conv.id}`, new Date().toISOString())
+      setChatConvId(conv.id)
+      clearSessionUnread(conv.id)
+      setOpenConvId(conv.id)
+    }
+  }
+
+  const handleCloseChat = () => {
+    setChatConvId(null)
+    setOpenConvId(null)
+  }
+
   const handleCloture = async (mission, { realDuration, notes }) => {
     await updateMission(mission.id, {
       status: 'termine',
@@ -348,32 +442,39 @@ export default function EmployeeSpace() {
     : format(currentDay, 'EEEE d MMMM', { locale: fr })
 
   return (
-    <div className="min-h-screen bg-slate-50 font-sans flex flex-col">
-      <header className="bg-primary text-white px-4 pt-12 pb-6">
-        <div className="max-w-lg mx-auto">
-          <div className="flex items-center justify-between mb-4">
+    <div className="min-h-screen bg-stone-50 font-sans flex flex-col">
+      <header className="relative bg-[#0f2318] text-white px-4 pt-12 pb-8 overflow-hidden">
+        {/* Ambient gradient */}
+        <div className="absolute inset-0 pointer-events-none"
+          style={{ backgroundImage: 'radial-gradient(ellipse at 80% 0%, rgba(217,119,6,0.15) 0%, transparent 60%), radial-gradient(ellipse at 0% 100%, rgba(45,106,79,0.4) 0%, transparent 50%)' }} />
+
+        <div className="relative max-w-lg mx-auto">
+          <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center text-white text-lg font-bold">
+              <div className="w-12 h-12 rounded-2xl bg-white/10 border border-white/20 flex items-center justify-center text-white text-lg font-bold">
                 {getInitials(empSession.firstName, empSession.lastName)}
               </div>
               <div>
                 <p className="font-black text-lg leading-tight">{empSession.firstName} {empSession.lastName}</p>
-                <p className="text-white/70 text-sm">Mon espace</p>
+                <p className="text-white/50 text-xs uppercase tracking-widest font-medium">Mon espace</p>
               </div>
             </div>
-            <button onClick={() => setShowLogout(true)} className="p-2 rounded-xl bg-white/10 hover:bg-white/20 transition-colors" aria-label="Déconnexion">
-              <LogOut size={18} />
+            <button onClick={() => setShowLogout(true)}
+              className="p-2 rounded-xl bg-white/5 border border-white/10 hover:bg-white/15 transition-colors"
+              aria-label="Déconnexion">
+              <LogOut size={17} />
             </button>
           </div>
-          <div className="grid grid-cols-3 gap-2 mt-2">
+
+          <div className="grid grid-cols-3 gap-3">
             {[
-              { label: "Missions aujourd'hui", value: todayMissions.length },
-              { label: 'Missions ce mois', value: monthDone },
-              { label: 'Heures ce mois', value: `${monthHours}h` },
-            ].map(({ label, value }) => (
-              <div key={label} className="bg-white/10 rounded-2xl p-3 text-center">
+              { label: "Aujourd'hui", value: todayMissions.length, color: 'bg-white/8' },
+              { label: 'Ce mois',     value: monthDone,            color: 'bg-white/8' },
+              { label: 'Heures',      value: `${monthHours}h`,     color: 'bg-amber-500/20 border-amber-500/30' },
+            ].map(({ label, value, color }) => (
+              <div key={label} className={`${color} border border-white/10 rounded-2xl p-3 text-center`}>
                 <p className="text-2xl font-black font-mono">{value}</p>
-                <p className="text-white/60 text-[10px] leading-tight mt-0.5">{label}</p>
+                <p className="text-white/50 text-[10px] leading-tight mt-0.5 uppercase tracking-wide">{label}</p>
               </div>
             ))}
           </div>
@@ -382,10 +483,20 @@ export default function EmployeeSpace() {
 
       <main className="flex-1 max-w-lg mx-auto w-full px-4 py-5 space-y-4 pb-24">
         <div className="flex gap-1 bg-white rounded-2xl border border-slate-100 p-1">
-          {[{ key: 'today', label: "Aujourd'hui", icon: '📅' }, { key: 'week', label: 'Semaine', icon: '🗓' }].map((t) => (
-            <button key={t.key} onClick={() => setTab(t.key)}
-              className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold transition-colors ${tab === t.key ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-50'}`}>
+          {[
+            { key: 'today',    label: "Aujourd'hui", icon: '📅' },
+            { key: 'week',     label: 'Semaine',     icon: '🗓' },
+            { key: 'messages', label: 'Messages',    icon: '💬', badge: notifCount },
+          ].map((t) => (
+            <button key={t.key}
+              onClick={() => { setTab(t.key); handleCloseChat(); if (t.key === 'messages') clearNotif() }}
+              className={`relative flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-bold transition-colors ${tab === t.key ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-50'}`}>
               <span>{t.icon}</span> {t.label}
+              {t.badge > 0 && (
+                <span className="absolute top-1.5 right-2 w-4 h-4 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center">
+                  {t.badge > 9 ? '9+' : t.badge}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -406,6 +517,137 @@ export default function EmployeeSpace() {
                 <MissionCard key={m.id} mission={m} client={getClient(m.clientId)} size="lg"
                   allEmployees={allEmployees} onCloture={(mission) => setClotureModal(mission)} />
               ))
+            )}
+          </div>
+        )}
+
+        {tab === 'messages' && (
+          <div className="space-y-3">
+            {chatConvId ? (
+              /* Chat window */
+              (() => {
+                const isMissionChat = chatConvId !== directConv?.id
+                const missionConv   = isMissionChat ? missionConvs.find((c) => c.id === chatConvId) : null
+                const mission       = missionConv ? empMissions.find((m) => m.id === missionConv.missionId) : null
+                const teamIds       = mission?.teamIds ?? []
+                const members       = teamIds.map((id) => allEmployees.find((e) => e.id === id)).filter(Boolean)
+                const COLORS = ['bg-indigo-500','bg-amber-500','bg-green-500','bg-rose-500','bg-violet-500','bg-cyan-500']
+                return (
+                  <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden flex flex-col" style={{ height: 500 }}>
+                    {/* Header */}
+                    <div className="border-b border-slate-100 shrink-0">
+                      <div className="flex items-center gap-2 px-4 py-3">
+                        <button onClick={handleCloseChat}
+                          className="p-1.5 rounded-xl text-slate-400 hover:bg-slate-100 transition-colors">
+                          <ArrowLeft size={18} />
+                        </button>
+                        <p className="font-semibold text-sm text-slate-800">
+                          {isMissionChat ? (missionConv?.title ?? 'Chat équipe') : 'Manager'}
+                        </p>
+                      </div>
+                      {/* Participants pour les chats mission */}
+                      {isMissionChat && members.length > 0 && (
+                        <div className="px-4 pb-3 flex flex-wrap gap-1.5">
+                          <div className="flex items-center gap-1.5 bg-primary/10 rounded-full px-2.5 py-1">
+                            <div className="w-5 h-5 rounded-full bg-primary flex items-center justify-center text-white text-[9px] font-bold shrink-0">M</div>
+                            <span className="text-xs font-medium text-primary">Manager</span>
+                          </div>
+                          {members.map((emp, i) => (
+                            <div key={emp.id} className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 ${emp.id === empId ? 'bg-primary/10' : 'bg-slate-100'}`}>
+                              <div className={`w-5 h-5 rounded-full ${COLORS[i % COLORS.length]} flex items-center justify-center text-white text-[9px] font-bold shrink-0`}>
+                                {getInitials(emp.firstName, emp.lastName)}
+                              </div>
+                              <span className={`text-xs font-medium ${emp.id === empId ? 'text-primary' : 'text-slate-700'}`}>
+                                {emp.firstName}{emp.id === empId ? ' (moi)' : ''}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex-1 min-h-0">
+                      <ChatPanel
+                        convId={chatConvId}
+                        senderType="employee"
+                        senderId={empId}
+                        senderName={`${empSession.firstName} ${empSession.lastName}`}
+                      />
+                    </div>
+                  </div>
+                )
+              })()
+            ) : (
+              /* Conversation list */
+              <>
+                {/* Direct message with manager */}
+                {(() => {
+                  const unread = sessionUnreadByConv[directConv?.id] ?? 0
+                  return (
+                    <button onClick={handleOpenDirect}
+                      className="w-full flex items-center gap-3 p-4 bg-white rounded-2xl border border-slate-100 text-left hover:bg-primary/5 hover:border-primary/20 transition-colors">
+                      <div className="relative w-11 h-11 shrink-0">
+                        <div className="w-11 h-11 rounded-2xl bg-primary/10 flex items-center justify-center">
+                          <MessageSquare size={20} className="text-primary" />
+                        </div>
+                        {unread > 0 && (
+                          <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                            {unread > 9 ? '9+' : unread}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className={`font-semibold ${unread > 0 ? 'text-slate-900' : 'text-slate-700'}`}>Manager</p>
+                        <p className="text-xs text-slate-400 mt-0.5">
+                          {unread > 0 ? `${unread} message${unread > 1 ? 's' : ''} non lu${unread > 1 ? 's' : ''}` : 'Message direct'}
+                        </p>
+                      </div>
+                      <ChevronRight size={16} className="text-slate-300" />
+                    </button>
+                  )
+                })()}
+
+                {/* Mission chats */}
+                {empMissions.filter((m) => m.status !== 'annule').slice(0, 5).map((mission) => {
+                  const existingConv = missionConvs.find((c) => c.missionId === mission.id)
+                  const unread = sessionUnreadByConv[existingConv?.id] ?? 0
+                  return (
+                    <button key={mission.id} onClick={() => handleOpenMissionChat(mission)}
+                      className="w-full flex items-center gap-3 p-4 bg-white rounded-2xl border border-slate-100 text-left hover:bg-slate-50 transition-colors">
+                      <div className="relative w-11 h-11 shrink-0">
+                        <div className="w-11 h-11 rounded-2xl bg-green-100 flex items-center justify-center text-xl">
+                          {TYPE_ICON[mission.type] ?? '📋'}
+                        </div>
+                        {unread > 0 && (
+                          <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                            {unread > 9 ? '9+' : unread}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className={`font-semibold text-sm truncate ${unread > 0 ? 'text-slate-900' : 'text-slate-700'}`}>
+                          {getMissionTypeLabel(mission.type)}
+                        </p>
+                        <p className="text-xs text-slate-400 mt-0.5">
+                          {unread > 0
+                            ? `${unread} message${unread > 1 ? 's' : ''} non lu${unread > 1 ? 's' : ''}`
+                            : `Chat équipe · ${format(new Date(mission.date), 'd MMM', { locale: fr })}`
+                          }
+                        </p>
+                      </div>
+                      {!existingConv && unread === 0 && (
+                        <span className="text-[10px] text-slate-400 bg-slate-100 rounded-full px-2 py-0.5 shrink-0">Nouveau</span>
+                      )}
+                      <ChevronRight size={16} className="text-slate-300 shrink-0" />
+                    </button>
+                  )
+                })}
+
+                {empMissions.length === 0 && (
+                  <div className="text-center py-8 text-slate-400 text-sm bg-white rounded-2xl border border-slate-100">
+                    Aucune mission assignée pour l'instant.
+                  </div>
+                )}
+              </>
             )}
           </div>
         )}
@@ -437,6 +679,8 @@ export default function EmployeeSpace() {
           </div>
         )}
       </main>
+
+      <NotifPrompt userType="employee" userId={empId} />
 
       {/* Logout overlay */}
       {showLogout && (

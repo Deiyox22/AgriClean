@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { Leaf, Eye, EyeOff, ArrowLeft, ShieldCheck, Users } from 'lucide-react'
+import { Leaf, Eye, EyeOff, ArrowLeft, ShieldCheck, Users, Building2 } from 'lucide-react'
 import { useAuthStore } from '../../store/useAuthStore'
 import { supabase, fromDb } from '../../lib/supabase'
 
@@ -166,13 +166,62 @@ function EmployeeForm() {
   )
 }
 
+// ── Client Pro login ──────────────────────────────────────────────────────────
+function ClientForm() {
+  const [form, setForm]     = useState({ email: '', company: '' })
+  const [error, setError]   = useState('')
+  const [loading, setLoading] = useState(false)
+  const loginClient = useAuthStore((s) => s.loginClient)
+  const navigate = useNavigate()
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    setError('')
+    setLoading(true)
+    try {
+      const result = await loginClient(form.email, form.company)
+      if (result.ok) navigate('/espace-pro')
+      else setError(result.error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div>
+        <label className="block text-xs font-semibold text-slate-600 mb-1.5">Email de contact</label>
+        <input required type="email" className={inputCls}
+          value={form.email} onChange={(e) => set('email', e.target.value)}
+          placeholder="contact@monentreprise.fr" />
+      </div>
+      <div>
+        <label className="block text-xs font-semibold text-slate-600 mb-1.5">Nom de la société</label>
+        <input required className={inputCls}
+          value={form.company} onChange={(e) => set('company', e.target.value)}
+          placeholder="EARL Dupont Avicole" />
+      </div>
+      {error && <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-xl">{error}</div>}
+      <button type="submit" disabled={loading}
+        className="w-full py-3.5 bg-amber-500 text-white font-semibold rounded-xl hover:bg-amber-400 transition-colors disabled:opacity-50">
+        {loading ? 'Vérification…' : 'Accéder à mon espace'}
+      </button>
+      <p className="text-center text-xs text-slate-400 pt-1">
+        L'email doit correspondre à un contact enregistré par AgriClean.
+      </p>
+    </form>
+  )
+}
+
 // ── Main Login page ───────────────────────────────────────────────────────────
 export default function Login() {
   const [tab, setTab] = useState('employee')
 
   const tabs = [
-    { key: 'employee', label: 'Équipe',   icon: Users,        desc: 'Accédez à votre planning et vos missions' },
-    { key: 'manager',  label: 'Manager',  icon: ShieldCheck,  desc: 'Accès complet à la gestion' },
+    { key: 'employee', label: 'Équipe',   icon: Users,       desc: 'Planning & missions' },
+    { key: 'client',   label: 'Espace Pro', icon: Building2, desc: 'Factures & devis' },
+    { key: 'manager',  label: 'Manager',  icon: ShieldCheck, desc: 'Gestion complète' },
   ]
 
   return (
@@ -189,19 +238,21 @@ export default function Login() {
         </div>
 
         {/* Tab selector */}
-        <div className="grid grid-cols-2 gap-2 mb-5">
+        <div className="grid grid-cols-3 gap-2 mb-5">
           {tabs.map((t) => {
             const Icon = t.icon
+            const active = tab === t.key
+            const activeColor = t.key === 'client'
+              ? 'border-amber-400 bg-amber-50 text-amber-600'
+              : 'border-primary bg-primary/5 text-primary'
             return (
               <button key={t.key} onClick={() => setTab(t.key)}
                 className={`flex flex-col items-center gap-1.5 p-3 rounded-2xl border-2 transition-all text-center ${
-                  tab === t.key
-                    ? 'border-primary bg-primary/5 text-primary'
-                    : 'border-slate-100 bg-white text-slate-500 hover:border-slate-200'
+                  active ? activeColor : 'border-slate-100 bg-white text-slate-500 hover:border-slate-200'
                 }`}>
-                <Icon size={20} strokeWidth={tab === t.key ? 2.5 : 1.8} />
-                <span className="text-sm font-bold">{t.label}</span>
-                <span className="text-xs text-slate-400 leading-tight">{t.desc}</span>
+                <Icon size={19} strokeWidth={active ? 2.5 : 1.8} />
+                <span className="text-xs font-bold leading-tight">{t.label}</span>
+                <span className="text-[10px] text-slate-400 leading-tight">{t.desc}</span>
               </button>
             )
           })}
@@ -210,9 +261,13 @@ export default function Login() {
         {/* Form */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
           <h2 className="text-base font-bold text-slate-900 mb-5">
-            {tab === 'manager' ? 'Connexion manager' : 'Connexion équipe'}
+            {tab === 'manager' ? 'Connexion manager'
+              : tab === 'client' ? 'Espace Professionnel'
+              : 'Connexion équipe'}
           </h2>
-          {tab === 'manager' ? <ManagerForm /> : <EmployeeForm />}
+          {tab === 'manager' ? <ManagerForm />
+            : tab === 'client' ? <ClientForm />
+            : <EmployeeForm />}
         </div>
 
         <Link to="/" className="flex items-center justify-center gap-1.5 mt-6 text-sm text-slate-400 hover:text-slate-600 transition-colors">

@@ -1,12 +1,15 @@
 import { useState, useEffect, useMemo } from 'react'
-import { LogOut, FileText, FileCheck, Download, Mail, Search } from 'lucide-react'
+import { LogOut, FileText, FileCheck, Download, Mail, Search, MessageSquare } from 'lucide-react'
 import PublicLayout from '../../components/layout/PublicLayout'
 import Badge from '../../components/ui/Badge'
 import Card from '../../components/ui/Card'
 import { useAuthStore } from '../../store/useAuthStore'
+import { useMessagingStore } from '../../store/useMessagingStore'
 import { supabase, fromDb } from '../../lib/supabase'
 import { formatCurrency, formatDate, getStatusLabel, getStatusBadgeClass } from '../../utils/formatters'
 import { generateInvoicePDF } from '../../utils/pdf'
+import ChatPanel from '../../components/messaging/ChatPanel'
+import NotifPrompt from '../../components/ui/NotifPrompt'
 
 function LoginForm() {
   const [form, setForm] = useState({ email: '', company: '' })
@@ -39,7 +42,7 @@ function LoginForm() {
           <h1 className="text-2xl font-black text-slate-900">Espace Professionnel</h1>
           <p className="text-slate-500 mt-2 text-sm">Accédez à vos devis et factures en ligne.</p>
         </div>
-        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
+        <div className="bg-white rounded-2xl border border-stone-100 shadow-sm p-6">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1.5">Votre email de contact *</label>
@@ -79,7 +82,15 @@ function ClientDashboard({ clientId, clientName }) {
   const [tab,         setTab]         = useState('factures')
   const [invSearch,   setInvSearch]   = useState('')
   const [invStatus,   setInvStatus]   = useState('all')
-  const logoutClient = useAuthStore((s) => s.logoutClient)
+  const [chatConvId,  setChatConvId]  = useState(null)
+  const logoutClient  = useAuthStore((s) => s.logoutClient)
+
+  const conversations     = useMessagingStore((s) => s.conversations)
+  const loadConversations = useMessagingStore((s) => s.loadConversations)
+  const getOrCreate       = useMessagingStore((s) => s.getOrCreate)
+  const notifCount        = useMessagingStore((s) => s.notifCount)
+  const clearNotif        = useMessagingStore((s) => s.clearNotif)
+  const initSessionUnread = useMessagingStore((s) => s.initSessionUnread)
 
   const filteredInvoices = useMemo(() => {
     let list = invoices
@@ -90,6 +101,44 @@ function ClientDashboard({ clientId, clientName }) {
     }
     return list
   }, [invoices, invStatus, invSearch])
+
+  useEffect(() => {
+    if (tab === 'messages') {
+      loadConversations()
+    }
+  }, [tab])
+
+  // Charger les non-lus depuis la DB pour le client
+  useEffect(() => {
+    if (!clientId || conversations.length === 0) return
+    const conv = conversations.find((c) => c.type === 'direct_client' && c.clientId === clientId)
+    if (!conv) return
+    const fetchUnread = async () => {
+      const lastRead = localStorage.getItem(`cli_read_${clientId}_${conv.id}`) ?? '1970-01-01T00:00:00Z'
+      const { count } = await supabase
+        .from('messages')
+        .select('*', { count: 'exact', head: true })
+        .eq('conversation_id', conv.id)
+        .eq('sender_type', 'manager')
+        .gt('created_at', lastRead)
+      if (count > 0) initSessionUnread({ [conv.id]: count })
+    }
+    fetchUnread()
+  }, [conversations, clientId])
+
+  const handleOpenChat = async () => {
+    let conv = conversations.find(
+      (c) => c.type === 'direct_client' && c.clientId === clientId
+    )
+    if (!conv) {
+      conv = await getOrCreate('direct_client', { clientId, title: clientName })
+    }
+    if (conv) {
+      localStorage.setItem(`cli_read_${clientId}_${conv.id}`, new Date().toISOString())
+      setChatConvId(conv.id)
+      clearNotif()
+    }
+  }
 
   useEffect(() => {
     const load = async () => {
@@ -116,28 +165,33 @@ function ClientDashboard({ clientId, clientName }) {
   const totalPaid = invoices.filter((i) => i.status === 'payee').reduce((s, i) => s + getTTC(i), 0)
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <p className="text-xs text-slate-400 uppercase tracking-widest mb-1">Espace Professionnel</p>
-          <h1 className="text-2xl font-black text-slate-900">{clientName}</h1>
+    <div className="min-h-screen bg-stone-50">
+      {/* Header dark */}
+      <div className="relative bg-[#0f2318] text-white px-4 pt-12 pb-8 overflow-hidden">
+        <div className="absolute inset-0 pointer-events-none"
+          style={{ backgroundImage: 'radial-gradient(ellipse at 90% 0%, rgba(217,119,6,0.2) 0%, transparent 60%)' }} />
+        <div className="relative max-w-4xl mx-auto flex items-center justify-between">
+          <div>
+            <p className="text-white/50 text-xs uppercase tracking-widest font-medium mb-1">Espace Professionnel</p>
+            <h1 className="text-2xl font-black">{clientName}</h1>
+          </div>
+          <button onClick={logoutClient}
+            className="flex items-center gap-1.5 px-3 py-2 text-sm text-white/60 hover:text-white bg-white/5 border border-white/10 hover:bg-white/10 rounded-xl transition-colors">
+            <LogOut size={15} /> Déconnexion
+          </button>
         </div>
-        <button onClick={logoutClient}
-          className="flex items-center gap-1.5 px-3 py-2 text-sm text-slate-500 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors">
-          <LogOut size={16} /> Déconnexion
-        </button>
       </div>
 
+    <div className="max-w-4xl mx-auto px-4 py-6">
       {/* KPIs */}
-      <div className="grid grid-cols-3 gap-3 mb-6">
-        <div className="bg-white rounded-2xl border border-slate-100 p-4 text-center shadow-sm">
+      <div className="grid grid-cols-3 gap-3 mb-6 -mt-4">
+        <div className="bg-white rounded-2xl border border-stone-100 p-4 text-center shadow-sm">
           <p className="text-xl font-bold text-slate-900 font-mono">{invoices.length}</p>
           <p className="text-xs text-slate-400 mt-0.5">Factures</p>
         </div>
-        <div className="bg-amber-50 rounded-2xl border border-amber-100 p-4 text-center shadow-sm">
-          <p className="text-xl font-bold text-amber-700 font-mono">{formatCurrency(totalDue)}</p>
-          <p className="text-xs text-amber-500 mt-0.5">En attente</p>
+        <div className="bg-gradient-to-br from-amber-500 to-orange-500 rounded-2xl p-4 text-center shadow-md shadow-amber-200/50">
+          <p className="text-xl font-bold text-white font-mono">{formatCurrency(totalDue)}</p>
+          <p className="text-xs text-white/70 mt-0.5">En attente</p>
         </div>
         <div className="bg-green-50 rounded-2xl border border-green-100 p-4 text-center shadow-sm">
           <p className="text-xl font-bold text-green-700 font-mono">{formatCurrency(totalPaid)}</p>
@@ -146,16 +200,23 @@ function ClientDashboard({ clientId, clientName }) {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 border-b border-slate-100 mb-4">
+      <div className="flex gap-1 border-b border-stone-100 mb-4">
         {[
-          { key: 'factures', label: `Factures (${invoices.length})`, icon: FileText },
-          { key: 'devis', label: `Devis (${quotes.length})`, icon: FileCheck },
+          { key: 'factures',  label: `Factures (${invoices.length})`, icon: FileText },
+          { key: 'devis',     label: `Devis (${quotes.length})`,      icon: FileCheck },
+          { key: 'messages',  label: 'Messages',                       icon: MessageSquare, badge: notifCount },
         ].map((t) => {
           const Icon = t.icon
           return (
-            <button key={t.key} onClick={() => setTab(t.key)}
-              className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold transition-colors border-b-2 -mb-px ${tab === t.key ? 'border-primary text-primary' : 'border-transparent text-slate-500'}`}>
+            <button key={t.key}
+              onClick={() => { setTab(t.key); if (t.key === 'messages') clearNotif() }}
+              className={`relative flex items-center gap-2 px-4 py-2.5 text-sm font-semibold transition-colors border-b-2 -mb-px ${tab === t.key ? 'border-primary text-primary' : 'border-transparent text-slate-500'}`}>
               <Icon size={15} /> {t.label}
+              {t.badge > 0 && (
+                <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center">
+                  {t.badge > 9 ? '9+' : t.badge}
+                </span>
+              )}
             </button>
           )
         })}
@@ -197,7 +258,7 @@ function ClientDashboard({ clientId, clientName }) {
             </div>
           ) : (
             filteredInvoices.map((inv) => (
-              <div key={inv.id} className="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm">
+              <div key={inv.id} className="bg-white rounded-2xl border border-stone-100 p-4 shadow-sm">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="font-mono font-bold text-slate-900">{inv.number}</p>
@@ -243,6 +304,42 @@ function ClientDashboard({ clientId, clientName }) {
         </div>
       )}
 
+      {/* Messages */}
+      {tab === 'messages' && (
+        <div className="space-y-4">
+          {!chatConvId ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mb-4">
+                <MessageSquare size={28} className="text-primary" />
+              </div>
+              <p className="font-semibold text-slate-800 mb-1">Contacter AgriClean</p>
+              <p className="text-sm text-slate-500 mb-4">Envoyez un message directement à votre manager.</p>
+              <button onClick={handleOpenChat}
+                className="px-5 py-2.5 bg-primary text-white rounded-xl font-semibold text-sm hover:bg-primary-light transition-colors">
+                Démarrer la conversation
+              </button>
+            </div>
+          ) : (
+            <div className="bg-white rounded-2xl border border-stone-100 overflow-hidden flex flex-col" style={{ height: 480 }}>
+              <div className="flex items-center gap-3 px-4 py-3 border-b border-stone-100 shrink-0">
+                <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center">
+                  <MessageSquare size={15} className="text-primary" />
+                </div>
+                <p className="font-semibold text-sm text-slate-900">Manager AgriClean</p>
+              </div>
+              <div className="flex-1 min-h-0">
+                <ChatPanel
+                  convId={chatConvId}
+                  senderType="client"
+                  senderId={clientId}
+                  senderName={clientName}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Quotes */}
       {tab === 'devis' && (
         <div className="space-y-3">
@@ -253,7 +350,7 @@ function ClientDashboard({ clientId, clientName }) {
             </div>
           ) : (
             quotes.map((q) => (
-              <div key={q.id} className="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm">
+              <div key={q.id} className="bg-white rounded-2xl border border-stone-100 p-4 shadow-sm">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="font-mono font-bold text-slate-900">{q.number}</p>
@@ -289,6 +386,7 @@ function ClientDashboard({ clientId, clientName }) {
         </div>
       )}
     </div>
+    </div>
   )
 }
 
@@ -298,7 +396,10 @@ export default function ClientPortal() {
   return (
     <PublicLayout>
       {clientSession
-        ? <ClientDashboard clientId={clientSession.clientId} clientName={clientSession.name} />
+        ? <>
+            <ClientDashboard clientId={clientSession.clientId} clientName={clientSession.name} />
+            <NotifPrompt userType="client" userId={clientSession.clientId} />
+          </>
         : <LoginForm />
       }
     </PublicLayout>

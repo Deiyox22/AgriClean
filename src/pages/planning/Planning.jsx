@@ -114,14 +114,15 @@ function QuickCreateModal({ date, clients, employees, vehicles, settings, onSave
     vehicleId: '',
     instructions: '',
   })
-  const [saving, setSaving] = useState(false)
+  const [saving, setSaving]   = useState(false)
+  const [clientError, setClientError] = useState(false)
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
 
   const toggleEmployee = (id) =>
     set('teamIds', form.teamIds.includes(id) ? form.teamIds.filter((x) => x !== id) : [...form.teamIds, id])
 
   const handleSave = async () => {
-    if (!form.clientId) return
+    if (!form.clientId) { setClientError(true); return }
     setSaving(true)
     try {
       const d = new Date(date)
@@ -190,12 +191,20 @@ function QuickCreateModal({ date, clients, employees, vehicles, settings, onSave
         {/* Client */}
         <div>
           <label className="block text-xs font-medium text-slate-600 mb-1">Client *</label>
-          <select required className={inputCls} value={form.clientId} onChange={(e) => set('clientId', e.target.value)}>
+          <select required
+            className={`${inputCls} ${clientError ? 'border-red-400 ring-2 ring-red-200' : ''}`}
+            value={form.clientId}
+            onChange={(e) => { set('clientId', e.target.value); setClientError(false) }}>
             <option value="">Sélectionner un client…</option>
             {clients.filter((c) => c.status === 'actif').map((c) => (
               <option key={c.id} value={c.id}>{c.name}</option>
             ))}
           </select>
+          {clientError && (
+            <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
+              ⚠ Veuillez sélectionner un client avant de continuer.
+            </p>
+          )}
         </div>
 
         {/* Heure + Durée */}
